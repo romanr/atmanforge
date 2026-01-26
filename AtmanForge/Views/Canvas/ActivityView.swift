@@ -7,7 +7,7 @@ struct ActivityView: View {
     @Environment(AppState.self) private var appState
     @State private var thumbnailMaxSize: CGFloat = 64
 
-    private static let thumbStops: [CGFloat] = [24, 32, 64, 128]
+    private static let thumbStops: [CGFloat] = [32, 64, 96, 128]
 
     private var projectRoot: URL? {
         appState.projectManager.projectsRootURL
