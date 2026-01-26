@@ -1,0 +1,89 @@
+import SwiftUI
+import UniformTypeIdentifiers
+
+struct CanvasToolbar: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        @Bindable var appState = appState
+
+        HStack(spacing: 4) {
+            ForEach(CanvasTool.allCases, id: \.self) { tool in
+                Button {
+                    appState.selectedTool = tool
+                } label: {
+                    Image(systemName: tool.icon)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.bordered)
+                .tint(appState.selectedTool == tool ? .accentColor : .secondary)
+                .help(tool.label)
+            }
+
+            Divider()
+                .frame(height: 20)
+                .padding(.horizontal, 4)
+
+            Button {
+                appState.zoomIn()
+            } label: {
+                Image(systemName: "plus.magnifyingglass")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.bordered)
+            .help("Zoom In")
+
+            Button {
+                appState.zoomOut()
+            } label: {
+                Image(systemName: "minus.magnifyingglass")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.bordered)
+            .help("Zoom Out")
+
+            Button {
+                appState.zoomToFit()
+            } label: {
+                Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.bordered)
+            .help("Fit to Window")
+
+            Spacer()
+
+            Button {
+                exportImage()
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(.bordered)
+            .disabled(appState.selectedCanvas?.hasImage != true)
+            .help("Export Image")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+    }
+
+    private func exportImage() {
+        #if os(macOS)
+        guard let canvas = appState.selectedCanvas, canvas.hasImage else { return }
+
+        let panel = NSSavePanel()
+        panel.title = "Export Image"
+        panel.nameFieldStringValue = "\(canvas.name).png"
+        panel.allowedContentTypes = [.png, .jpeg]
+
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                let data = try Data(contentsOf: canvas.imageURL)
+                try data.write(to: url)
+                appState.statusMessage = "Exported to \(url.lastPathComponent)"
+            } catch {
+                appState.statusMessage = "Export failed: \(error.localizedDescription)"
+            }
+        }
+        #endif
+    }
+}
