@@ -62,6 +62,14 @@ class ReplicateProvider: AIProvider {
             "aspect_ratio": request.aspectRatio.rawValue,
         ]
 
+        // Add reference images as base64 data URIs
+        if !request.referenceImages.isEmpty {
+            let dataURIs = request.referenceImages.map { data in
+                "data:image/png;base64,\(data.base64EncodedString())"
+            }
+            input["image_input"] = dataURIs
+        }
+
         switch request.model {
         case .gemini25:
             break

@@ -1,7 +1,11 @@
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct AIGenerationPanel: View {
     @Environment(AppState.self) private var appState
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var isDropTargeted = false
 
     var body: some View {
         @Bindable var appState = appState
@@ -42,6 +46,115 @@ struct AIGenerationPanel: View {
             }
 
             Divider()
+
+            // Reference Images
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Reference Images")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if !appState.referenceImages.isEmpty {
+                        Button("Clear") {
+                            appState.referenceImages.removeAll()
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                        .foregroundStyle(isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.3))
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(isDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
+                        )
+                        .frame(minHeight: appState.referenceImages.isEmpty ? 100 : 80)
+
+                    if appState.referenceImages.isEmpty {
+                        VStack(spacing: 6) {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .font(.title2)
+                                .foregroundStyle(.tertiary)
+                            Text("Drop images here")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(Array(appState.referenceImages.enumerated()), id: \.offset) { index, imageData in
+                                    ZStack(alignment: .topTrailing) {
+                                        #if os(macOS)
+                                        if let nsImage = NSImage(data: imageData) {
+                                            Image(nsImage: nsImage)
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                                .frame(width: 64, height: 64)
+                                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                        }
+                                        #else
+                                        if let uiImage = UIImage(data: imageData) {
+                                            Image(uiImage: uiImage)
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                                .frame(width: 64, height: 64)
+                                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                        }
+                                        #endif
+
+                                        Button {
+                                            appState.removeReferenceImage(at: index)
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 14))
+                                                .foregroundStyle(.white, .black.opacity(0.6))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .offset(x: 4, y: -4)
+                                    }
+                                }
+                            }
+                            .padding(8)
+                        }
+                    }
+                }
+                .onDrop(of: [.image, .fileURL], isTargeted: $isDropTargeted) { providers in
+                    handleDrop(providers)
+                }
+
+                HStack {
+                    PhotosPicker(
+                        selection: $selectedPhotos,
+                        maxSelectionCount: max(appState.selectedModel.maxReferenceImages - appState.referenceImages.count, 1),
+                        matching: .images
+                    ) {
+                        Label("Browse", systemImage: "plus.circle")
+                            .font(.subheadline)
+                    }
+                    .disabled(appState.referenceImages.count >= appState.selectedModel.maxReferenceImages)
+                    .onChange(of: selectedPhotos) { _, newItems in
+                        Task {
+                            var newImages: [Data] = []
+                            for item in newItems {
+                                if let data = try? await item.loadTransferable(type: Data.self) {
+                                    newImages.append(data)
+                                }
+                            }
+                            appState.addReferenceImages(newImages)
+                            selectedPhotos = []
+                        }
+                    }
+
+                    Spacer()
+
+                    Text("\(appState.referenceImages.count)/\(appState.selectedModel.maxReferenceImages) max")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Prompt")
@@ -160,22 +273,20 @@ struct AIGenerationPanel: View {
             }
 
             Button {
-                Task {
-                    await appState.generateImage()
-                }
+                appState.generateImage()
             } label: {
                 HStack {
-                    if appState.isGenerating {
+                    if appState.runningJobCount > 0 {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    Text(appState.isGenerating ? "Generating..." : "Generate")
+                    Text(appState.runningJobCount > 0 ? "Generate (\(appState.runningJobCount) running)" : "Generate")
                         .frame(maxWidth: .infinity)
                 }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(appState.isGenerating || appState.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(appState.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             if let error = appState.errorMessage {
                 Text(error)
@@ -184,5 +295,33 @@ struct AIGenerationPanel: View {
                     .lineLimit(3)
             }
         }
+    }
+
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        let remaining = appState.selectedModel.maxReferenceImages - appState.referenceImages.count
+        guard remaining > 0 else { return false }
+
+        let providersToProcess = Array(providers.prefix(remaining))
+        for provider in providersToProcess {
+            // Try loading as file URL first (common for Finder drag)
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                    guard let data = item as? Data,
+                          let url = URL(dataRepresentation: data, relativeTo: nil),
+                          let imageData = try? Data(contentsOf: url) else { return }
+                    DispatchQueue.main.async {
+                        appState.addReferenceImages([imageData])
+                    }
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
+                    guard let data else { return }
+                    DispatchQueue.main.async {
+                        appState.addReferenceImages([data])
+                    }
+                }
+            }
+        }
+        return true
     }
 }

@@ -101,6 +101,14 @@ enum AIModel: String, CaseIterable, Codable {
         }
     }
 
+    var maxReferenceImages: Int {
+        switch self {
+        case .gemini25: return 6
+        case .gemini30: return 14
+        case .gptImage15: return 10
+        }
+    }
+
     var supportedAspectRatios: [AspectRatio] {
         switch self {
         case .gemini25, .gemini30:

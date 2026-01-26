@@ -95,7 +95,7 @@ struct ContentView: View {
 
     private var statusBar: some View {
         HStack {
-            if appState.isGenerating {
+            if appState.runningJobCount > 0 {
                 ProgressView()
                     .controlSize(.small)
             }

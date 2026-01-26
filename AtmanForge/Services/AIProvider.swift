@@ -6,6 +6,7 @@ struct GenerationRequest {
     let aspectRatio: AspectRatio
     let resolution: ImageResolution?
     let imageCount: Int
+    let referenceImages: [Data]
     let gptQuality: GPTQuality?
     let gptBackground: GPTBackground?
     let gptInputFidelity: GPTInputFidelity?

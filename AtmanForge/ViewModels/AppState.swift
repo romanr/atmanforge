@@ -29,6 +29,7 @@ class AppState {
     var selectedResolution: ImageResolution = .r2k
     var selectedAspectRatio: AspectRatio = .r1_1
     var imageCount: Int = 1
+    var referenceImages: [Data] = []
     var gptQuality: GPTQuality = .medium
     var gptBackground: GPTBackground = .auto
     var gptInputFidelity: GPTInputFidelity = .high
@@ -78,10 +79,49 @@ class AppState {
             imageCount = selectedModel.maxImageCount
         }
 
+        // Clamp reference images to model max
+        if referenceImages.count > selectedModel.maxReferenceImages {
+            referenceImages = Array(referenceImages.prefix(selectedModel.maxReferenceImages))
+        }
+
         // Reset aspect ratio if not supported by new model
         if !selectedModel.supportedAspectRatios.contains(selectedAspectRatio) {
             selectedAspectRatio = .r1_1
         }
+    }
+
+    func addReferenceImages(_ images: [Data]) {
+        let remaining = selectedModel.maxReferenceImages - referenceImages.count
+        guard remaining > 0 else { return }
+        for imageData in images.prefix(remaining) {
+            if let normalized = Self.normalizeImageData(imageData) {
+                referenceImages.append(normalized)
+            }
+        }
+    }
+
+    func removeReferenceImage(at index: Int) {
+        guard referenceImages.indices.contains(index) else { return }
+        referenceImages.remove(at: index)
+    }
+
+    /// Convert arbitrary image data to PNG for consistent API handling
+    private static func normalizeImageData(_ data: Data) -> Data? {
+        #if os(macOS)
+        guard let image = NSImage(data: data),
+              let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData),
+              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+            return nil
+        }
+        return pngData
+        #else
+        guard let image = UIImage(data: data),
+              let pngData = image.pngData() else {
+            return nil
+        }
+        return pngData
+        #endif
     }
 
     // MARK: - Image Inspector
@@ -200,7 +240,7 @@ class AppState {
 
     // MARK: - AI Generation
 
-    func generateImage() async {
+    func generateImage() {
         guard let projectRoot = projectManager.projectsRootURL else {
             errorMessage = "No project folder open."
             statusMessage = "No project folder open."
@@ -220,66 +260,73 @@ class AppState {
             return
         }
 
+        // Snapshot current settings before launching async work
+        let currentModel = selectedModel
+        let currentAspectRatio = selectedAspectRatio
+        let currentResolution = selectedResolution
+        let currentImageCount = imageCount
+        let currentReferenceImages = referenceImages
+        let currentGptQuality = gptQuality
+        let currentGptBackground = gptBackground
+        let currentGptInputFidelity = gptInputFidelity
+
         // Create job and switch to activity tab immediately
         let job = GenerationJob(
-            model: selectedModel,
+            model: currentModel,
             prompt: trimmedPrompt,
             projectID: projectRoot.lastPathComponent,
-            aspectRatio: selectedAspectRatio,
-            resolution: selectedModel.supportsResolution ? selectedResolution : nil,
-            imageCount: imageCount,
-            gptQuality: selectedModel == .gptImage15 ? gptQuality : nil,
-            gptBackground: selectedModel == .gptImage15 ? gptBackground : nil,
-            gptInputFidelity: selectedModel == .gptImage15 ? gptInputFidelity : nil
+            aspectRatio: currentAspectRatio,
+            resolution: currentModel.supportsResolution ? currentResolution : nil,
+            imageCount: currentImageCount,
+            gptQuality: currentModel == .gptImage15 ? currentGptQuality : nil,
+            gptBackground: currentModel == .gptImage15 ? currentGptBackground : nil,
+            gptInputFidelity: currentModel == .gptImage15 ? currentGptInputFidelity : nil
         )
         generationJobs.insert(job, at: 0)
         activeJobID = job.id
 
-        isGenerating = true
         errorMessage = nil
-        statusMessage = "Generating with \(selectedModel.displayName)..."
+        statusMessage = "Generating with \(currentModel.displayName)..."
         job.status = .running
 
         let request = GenerationRequest(
             prompt: trimmedPrompt,
-            model: selectedModel,
-            aspectRatio: selectedAspectRatio,
-            resolution: selectedModel.supportsResolution ? selectedResolution : nil,
-            imageCount: imageCount,
-            gptQuality: selectedModel == .gptImage15 ? gptQuality : nil,
-            gptBackground: selectedModel == .gptImage15 ? gptBackground : nil,
-            gptInputFidelity: selectedModel == .gptImage15 ? gptInputFidelity : nil
+            model: currentModel,
+            aspectRatio: currentAspectRatio,
+            resolution: currentModel.supportsResolution ? currentResolution : nil,
+            imageCount: currentImageCount,
+            referenceImages: currentReferenceImages,
+            gptQuality: currentModel == .gptImage15 ? currentGptQuality : nil,
+            gptBackground: currentModel == .gptImage15 ? currentGptBackground : nil,
+            gptInputFidelity: currentModel == .gptImage15 ? currentGptInputFidelity : nil
         )
 
         let provider = ReplicateProvider(apiKey: apiKey)
 
-        do {
-            let result = try await provider.generateImage(request: request)
+        Task {
+            do {
+                let result = try await provider.generateImage(request: request)
 
-            guard !result.imageDataArray.isEmpty else {
-                throw ReplicateError.noOutput
+                guard !result.imageDataArray.isEmpty else {
+                    throw ReplicateError.noOutput
+                }
+
+                let saved = try projectManager.saveGeneratedImages(result.imageDataArray, toFolder: projectRoot)
+
+                job.resultImageData = result.imageDataArray
+                job.savedImagePaths = saved.imagePaths
+                job.thumbnailPaths = saved.thumbnailPaths
+                job.status = .completed
+                imageVersion += 1
+                statusMessage = "Saved \(saved.imagePaths.count) image\(saved.imagePaths.count == 1 ? "" : "s")"
+                saveActivity()
+            } catch {
+                job.status = .failed
+                job.errorMessage = error.localizedDescription
+                errorMessage = error.localizedDescription
+                statusMessage = "Generation failed."
+                saveActivity()
             }
-
-            let saved = try projectManager.saveGeneratedImages(result.imageDataArray, toFolder: projectRoot)
-
-            job.resultImageData = result.imageDataArray
-            job.savedImagePaths = saved.imagePaths
-            job.thumbnailPaths = saved.thumbnailPaths
-            job.status = .completed
-            imageVersion += 1
-            statusMessage = "Saved \(saved.imagePaths.count) image\(saved.imagePaths.count == 1 ? "" : "s")"
-            saveActivity()
-        } catch {
-            job.status = .failed
-            job.errorMessage = error.localizedDescription
-            errorMessage = error.localizedDescription
-            statusMessage = "Generation failed."
-            saveActivity()
-        }
-
-        isGenerating = false
-        if activeJobID == job.id {
-            activeJobID = nil
         }
     }
 

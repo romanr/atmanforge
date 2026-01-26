@@ -8,49 +8,6 @@ struct CanvasToolbar: View {
         @Bindable var appState = appState
 
         HStack(spacing: 4) {
-            ForEach(CanvasTool.allCases, id: \.self) { tool in
-                Button {
-                    appState.selectedTool = tool
-                } label: {
-                    Image(systemName: tool.icon)
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.bordered)
-                .tint(appState.selectedTool == tool ? .accentColor : .secondary)
-                .help(tool.label)
-            }
-
-            Divider()
-                .frame(height: 20)
-                .padding(.horizontal, 4)
-
-            Button {
-                appState.zoomIn()
-            } label: {
-                Image(systemName: "plus.magnifyingglass")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.bordered)
-            .help("Zoom In")
-
-            Button {
-                appState.zoomOut()
-            } label: {
-                Image(systemName: "minus.magnifyingglass")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.bordered)
-            .help("Zoom Out")
-
-            Button {
-                appState.zoomToFit()
-            } label: {
-                Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.bordered)
-            .help("Fit to Window")
-
             Spacer()
 
             Button {
