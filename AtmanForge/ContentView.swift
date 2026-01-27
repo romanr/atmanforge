@@ -24,13 +24,7 @@ struct ContentView: View {
             HSplitView {
                 GenerationSidebar()
 
-                VStack(spacing: 0) {
-                    ActivityView()
-
-                    Divider()
-
-                    statusBar
-                }
+                CenterPanelView()
 
                 if appState.selectedImageJob != nil {
                     ImageInspectorView()
@@ -93,27 +87,4 @@ struct ContentView: View {
         )
     }
 
-    private var statusBar: some View {
-        HStack {
-            if appState.runningJobCount > 0 {
-                ProgressView()
-                    .controlSize(.small)
-            }
-            Text(appState.statusMessage)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if appState.runningJobCount > 0 {
-                Text("\(appState.runningJobCount) job\(appState.runningJobCount == 1 ? "" : "s") running")
-                    .font(.caption)
-                    .foregroundStyle(.blue)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.blue.opacity(0.1))
-                    .clipShape(Capsule())
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-    }
 }

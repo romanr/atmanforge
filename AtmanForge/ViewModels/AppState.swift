@@ -1,5 +1,10 @@
 import SwiftUI
 
+enum CenterTab: String, CaseIterable {
+    case activity
+    case library
+}
+
 @MainActor
 @Observable
 class AppState {
@@ -13,6 +18,9 @@ class AppState {
     // MARK: - UI State
     var isGenerating = false
     var statusMessage = "Ready"
+    var selectedCenterTab: CenterTab = .activity
+    var activityThumbnailSize: CGFloat = 64
+    var libraryThumbnailSize: CGFloat = 96
     var selectedTool: CanvasTool = .select
     var canvasZoom: CGFloat = 1.0
     var canvasOffset: CGSize = .zero

@@ -62,10 +62,15 @@ class ReplicateProvider: AIProvider {
             "aspect_ratio": request.aspectRatio.rawValue,
         ]
 
-        // Upload reference images as files and pass their URLs
+        // Upload reference images and pass their URLs
         if !request.referenceImages.isEmpty {
+            print("[Replicate] Uploading \(request.referenceImages.count) reference image(s)...")
             let fileURLs = try await uploadReferenceImages(request.referenceImages)
-            input["image_input"] = fileURLs
+            let key = request.model == .gptImage15 ? "input_images" : "image_input"
+            print("[Replicate] Using key '\(key)' with \(fileURLs.count) URL(s): \(fileURLs)")
+            input[key] = fileURLs
+        } else {
+            print("[Replicate] No reference images to upload")
         }
 
         switch request.model {
@@ -99,7 +104,9 @@ class ReplicateProvider: AIProvider {
         try await withThrowingTaskGroup(of: (Int, String).self) { group in
             for (index, imageData) in images.enumerated() {
                 group.addTask {
+                    print("[Replicate] Uploading reference image \(index) (\(imageData.count) bytes)...")
                     let url = try await self.uploadFile(imageData, filename: "reference_\(index).png")
+                    print("[Replicate] Upload \(index) returned URL: \(url)")
                     return (index, url)
                 }
             }
@@ -123,13 +130,18 @@ class ReplicateProvider: AIProvider {
         var body = Data()
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"content\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/png\r\n\r\n".data(using: .utf8)!)
         body.append(data)
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         urlRequest.httpBody = body
 
+        print("[Replicate] POST /v1/files (\(body.count) bytes, boundary=\(boundary))")
+
         let (responseData, response) = try await session.data(for: urlRequest)
         try validateResponse(response, data: responseData)
+
+        let responseString = String(data: responseData, encoding: .utf8) ?? "<non-utf8>"
+        print("[Replicate] File upload response: \(responseString)")
 
         let fileResponse = try JSONDecoder().decode(FileUploadResponse.self, from: responseData)
         return fileResponse.urls.get
@@ -146,6 +158,16 @@ class ReplicateProvider: AIProvider {
 
         let body: [String: Any] = ["input": input]
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        // Log input keys (truncate long values like base64/URLs)
+        let inputKeys = input.keys.sorted()
+        let inputSummary = inputKeys.map { key -> String in
+            if let arr = input[key] as? [String] {
+                return "\(key): [\(arr.count) item(s)] \(arr.map { String($0.prefix(80)) })"
+            }
+            return "\(key): \(input[key] ?? "nil")"
+        }
+        print("[Replicate] Creating prediction for \(model) with input: \(inputSummary.joined(separator: ", "))")
 
         let (data, response) = try await session.data(for: urlRequest)
         try validateResponse(response, data: data)

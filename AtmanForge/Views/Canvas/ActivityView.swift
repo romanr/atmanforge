@@ -5,56 +5,26 @@ import AppKit
 
 struct ActivityView: View {
     @Environment(AppState.self) private var appState
-    @State private var thumbnailMaxSize: CGFloat = 64
-
-    private static let thumbStops: [CGFloat] = [32, 64, 96, 128]
+    var thumbnailMaxSize: CGFloat = 64
 
     private var projectRoot: URL? {
         appState.projectManager.projectsRootURL
     }
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Group {
-                if appState.generationJobs.isEmpty {
-                    emptyState
-                } else {
-                    jobListView
-                }
+        Group {
+            if appState.generationJobs.isEmpty {
+                emptyState
+            } else {
+                jobListView
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            thumbnailScaleSlider
-                .padding(12)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         #if os(macOS)
         .background(Color(nsColor: .windowBackgroundColor))
         #else
         .background(Color(uiColor: .systemBackground))
         #endif
-    }
-
-    private var thumbnailScaleSlider: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "photo")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-            Slider(
-                value: Binding(
-                    get: { CGFloat(Self.thumbStops.firstIndex(of: thumbnailMaxSize) ?? 2) },
-                    set: { thumbnailMaxSize = Self.thumbStops[Int($0)] }
-                ),
-                in: 0...CGFloat(Self.thumbStops.count - 1),
-                step: 1
-            )
-            .frame(width: 100)
-            Image(systemName: "photo")
-                .font(.system(size: 16))
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
     }
 
     private var emptyState: some View {
@@ -208,7 +178,7 @@ struct ActivityView: View {
     }
 }
 
-private struct ThumbnailHoverView: View {
+struct ThumbnailHoverView: View {
     let url: URL
     let width: CGFloat
     let height: CGFloat
@@ -272,7 +242,7 @@ private struct ThumbnailHoverView: View {
 }
 
 #if os(macOS)
-private struct NativeHoverZoomView: NSViewRepresentable {
+struct NativeHoverZoomView: NSViewRepresentable {
     let nsImage: NSImage?
     let width: CGFloat
     let height: CGFloat
@@ -293,7 +263,7 @@ private struct NativeHoverZoomView: NSViewRepresentable {
     }
 }
 
-private class HoverZoomNSView: NSView {
+class HoverZoomNSView: NSView {
     var image: NSImage? {
         didSet { imageLayer.contents = image }
     }
@@ -375,7 +345,7 @@ private class HoverZoomNSView: NSView {
 }
 #endif
 
-private struct FlowLayout: Layout {
+struct FlowLayout: Layout {
     var spacing: CGFloat = 6
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
