@@ -3,8 +3,19 @@ import SwiftUI
 import AppKit
 #endif
 
+struct HorizontalClipShape: Shape {
+    var clipFromX: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        Path(CGRect(x: clipFromX, y: 0, width: rect.width - clipFromX, height: rect.height))
+    }
+}
+
 struct ImageInspectorView: View {
     @Environment(AppState.self) private var appState
+
+    @State private var selectedReferenceIndex: Int = 0
+    @State private var comparisonPosition: CGFloat = 1.0
 
     private var job: GenerationJob? {
         appState.selectedImageJob
@@ -25,7 +36,8 @@ struct ImageInspectorView: View {
                 Divider()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        fullImage(job)
+                        comparisonImageView(job)
+                        referenceImageThumbnails(job)
                         metadataSection(job)
                         actionButtons(job)
                     }
@@ -38,6 +50,14 @@ struct ImageInspectorView: View {
             #else
             .background(Color(uiColor: .systemBackground))
             #endif
+            .onChange(of: appState.selectedImageJob?.id) { _, _ in
+                selectedReferenceIndex = 0
+                comparisonPosition = 1.0
+            }
+            .onChange(of: appState.selectedImageIndex) { _, _ in
+                selectedReferenceIndex = 0
+                comparisonPosition = 1.0
+            }
         }
     }
 
@@ -57,6 +77,181 @@ struct ImageInspectorView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private func comparisonImageView(_ job: GenerationJob) -> some View {
+        if job.referenceImagePaths.isEmpty {
+            fullImage(job)
+        } else {
+            comparisonSlider(job)
+        }
+    }
+
+    @ViewBuilder
+    private func comparisonSlider(_ job: GenerationJob) -> some View {
+        if imageIndex < job.savedImagePaths.count, let root = projectRoot {
+            let generatedURL = root.appendingPathComponent(job.savedImagePaths[imageIndex])
+            let safeRefIndex = min(selectedReferenceIndex, job.referenceImagePaths.count - 1)
+            let referenceURL = root.appendingPathComponent(job.referenceImagePaths[max(0, safeRefIndex)])
+
+            #if os(macOS)
+            if let generatedNS = NSImage(contentsOf: generatedURL),
+               let referenceNS = NSImage(contentsOf: referenceURL) {
+                comparisonOverlay(
+                    referenceImage: Image(nsImage: referenceNS),
+                    generatedImage: Image(nsImage: generatedNS),
+                    generatedURL: generatedURL
+                )
+            } else {
+                fullImage(job)
+            }
+            #else
+            if let genData = try? Data(contentsOf: generatedURL),
+               let genUI = UIImage(data: genData),
+               let refData = try? Data(contentsOf: referenceURL),
+               let refUI = UIImage(data: refData) {
+                comparisonOverlay(
+                    referenceImage: Image(uiImage: refUI),
+                    generatedImage: Image(uiImage: genUI),
+                    generatedURL: generatedURL
+                )
+            } else {
+                fullImage(job)
+            }
+            #endif
+        }
+    }
+
+    private func comparisonOverlay(referenceImage: Image, generatedImage: Image, generatedURL: URL) -> some View {
+        GeometryReader { geo in
+            let dividerX = geo.size.width * comparisonPosition
+
+            ZStack(alignment: .leading) {
+                // Base layer: reference image
+                referenceImage
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+
+                // Overlay: generated image clipped from dividerX to right
+                generatedImage
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+                    .clipShape(HorizontalClipShape(clipFromX: dividerX))
+                    .contextMenu {
+                        imageContextMenu(imageURL: generatedURL)
+                    }
+
+                // Divider line + handle
+                dividerHandle(dividerX: dividerX, height: geo.size.height)
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        comparisonPosition = min(max(value.location.x / geo.size.width, 0), 1)
+                    }
+            )
+        }
+        .aspectRatio(contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func dividerHandle(dividerX: CGFloat, height: CGFloat) -> some View {
+        ZStack {
+            // Vertical line
+            Rectangle()
+                .fill(Color.white)
+                .frame(width: 2, height: height)
+                .shadow(color: .black.opacity(0.3), radius: 1, x: 0, y: 0)
+
+            // Circle handle
+            Circle()
+                .fill(Color.white)
+                .frame(width: 28, height: 28)
+                .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 0)
+                .overlay {
+                    HStack(spacing: 2) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 8, weight: .bold))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .foregroundStyle(.secondary)
+                }
+        }
+        .position(x: dividerX, y: height / 2)
+        .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func referenceImageThumbnails(_ job: GenerationJob) -> some View {
+        if !job.referenceImagePaths.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Reference Images")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Spacer()
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            comparisonPosition = 0.5
+                        }
+                    } label: {
+                        Text("Compare")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(Array(job.referenceImagePaths.enumerated()), id: \.offset) { index, path in
+                            if let root = projectRoot {
+                                let url = root.appendingPathComponent(path)
+                                referenceThumbnail(url: url, isSelected: index == selectedReferenceIndex)
+                                    .onTapGesture {
+                                        selectedReferenceIndex = index
+                                    }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func referenceThumbnail(url: URL, isSelected: Bool) -> some View {
+        #if os(macOS)
+        if let nsImage = NSImage(contentsOf: url) {
+            Image(nsImage: nsImage)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                )
+        }
+        #else
+        if let data = try? Data(contentsOf: url), let uiImage = UIImage(data: data) {
+            Image(uiImage: uiImage)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                )
+        }
+        #endif
     }
 
     @ViewBuilder

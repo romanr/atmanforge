@@ -5,6 +5,24 @@ enum CenterTab: String, CaseIterable {
     case library
 }
 
+enum LibrarySortOrder: String, CaseIterable {
+    case name, model, resolution, size, dateAdded
+
+    var label: String {
+        switch self {
+        case .name: return "Name"
+        case .model: return "Model"
+        case .resolution: return "Resolution"
+        case .size: return "Size"
+        case .dateAdded: return "Date Added"
+        }
+    }
+}
+
+enum LibraryViewMode: String, CaseIterable {
+    case grid, list
+}
+
 struct GenerationParamsSnapshot: Equatable {
     let prompt: String
     let selectedModel: AIModel
@@ -39,6 +57,9 @@ class AppState {
     var imageVersion = 0
     var errorMessage: String?
     var projectSizeText: String = ""
+    var librarySortOrder: LibrarySortOrder = .dateAdded
+    var librarySortAscending: Bool = false
+    var libraryViewMode: LibraryViewMode = .grid
 
     // MARK: - Image Inspector
     var selectedImageJob: GenerationJob?
