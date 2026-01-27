@@ -290,10 +290,26 @@ struct AIGenerationPanel: View {
             .disabled(appState.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             if let error = appState.errorMessage {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .lineLimit(3)
+                HStack(alignment: .top, spacing: 4) {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                    Button {
+                        #if os(macOS)
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(error, forType: .string)
+                        #else
+                        UIPasteboard.general.string = error
+                        #endif
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy error message")
+                }
             }
         }
         .onChange(of: appState.prompt) {

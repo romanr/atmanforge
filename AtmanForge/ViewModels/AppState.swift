@@ -410,9 +410,11 @@ class AppState {
         activeJobID = job.id
 
         // Save reference images to project folder
+        var referenceHashes: [String] = []
         if !currentReferenceImages.isEmpty {
-            let refPaths = projectManager.saveReferenceImages(currentReferenceImages, toFolder: projectRoot)
-            job.referenceImagePaths = refPaths
+            let result = projectManager.saveReferenceImages(currentReferenceImages, toFolder: projectRoot)
+            job.referenceImagePaths = result.paths
+            referenceHashes = result.hashes
         }
 
         errorMessage = nil
@@ -450,7 +452,19 @@ class AppState {
                     throw ReplicateError.noOutput
                 }
 
-                let saved = try projectManager.saveGeneratedImages(result.imageDataArray, toFolder: projectRoot)
+                let meta = ImageMeta(
+                    prompt: trimmedPrompt,
+                    model: currentModel,
+                    aspectRatio: currentAspectRatio,
+                    resolution: currentModel.supportsResolution ? currentResolution : nil,
+                    imageCount: currentImageCount,
+                    gptQuality: currentModel == .gptImage15 ? currentGptQuality : nil,
+                    gptBackground: currentModel == .gptImage15 ? currentGptBackground : nil,
+                    gptInputFidelity: currentModel == .gptImage15 ? currentGptInputFidelity : nil,
+                    referenceHashes: referenceHashes,
+                    createdAt: Date()
+                )
+                let saved = try projectManager.saveGeneratedImages(result.imageDataArray, toFolder: projectRoot, meta: meta)
 
                 job.resultImageData = result.imageDataArray
                 job.savedImagePaths = saved.imagePaths

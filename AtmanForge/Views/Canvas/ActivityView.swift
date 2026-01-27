@@ -51,6 +51,14 @@ struct ActivityView: View {
                             hoveredJobID = isHovered ? job.id : nil
                         }
                         .contextMenu {
+                            if let error = job.errorMessage, job.status == .failed {
+                                Button {
+                                    copyToClipboard(error)
+                                } label: {
+                                    Label("Copy Error", systemImage: "doc.on.doc")
+                                }
+                                Divider()
+                            }
                             Button(role: .destructive) {
                                 appState.removeJob(job)
                             } label: {
@@ -166,10 +174,21 @@ struct ActivityView: View {
                 }
 
                 if let error = job.errorMessage, job.status == .failed {
-                    Text(error)
-                        .font(.caption2)
-                        .foregroundStyle(.red)
-                        .lineLimit(2)
+                    HStack(alignment: .top, spacing: 4) {
+                        Text(error)
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                            .textSelection(.enabled)
+                        Button {
+                            copyToClipboard(error)
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Copy error message")
+                    }
                 }
 
             }
@@ -228,6 +247,15 @@ struct ActivityView: View {
         }
 
         return ThumbnailHoverView(url: url, width: thumbWidth, height: thumbHeight, isSelected: isSelected, savedImageURL: savedImageURL, onTap: onTap)
+    }
+
+    private func copyToClipboard(_ text: String) {
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #else
+        UIPasteboard.general.string = text
+        #endif
     }
 
     private func relativeTime(_ date: Date) -> String {

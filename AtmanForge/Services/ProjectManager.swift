@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 #if os(macOS)
 import AppKit
 #else
@@ -204,7 +205,7 @@ class ProjectManager {
         try imageData.write(to: canvas.imageURL)
     }
 
-    func saveGeneratedImages(_ imageDataArray: [Data], toFolder folder: URL) throws -> (imagePaths: [String], thumbnailPaths: [String]) {
+    func saveGeneratedImages(_ imageDataArray: [Data], toFolder folder: URL, meta: ImageMeta? = nil) throws -> (imagePaths: [String], thumbnailPaths: [String]) {
         let generationsDir = folder.appendingPathComponent("generations")
         let thumbnailsDir = folder.appendingPathComponent(".thumbnails")
         try fileManager.createDirectory(at: generationsDir, withIntermediateDirectories: true)
@@ -221,19 +222,31 @@ class ProjectManager {
             let suffix = imageDataArray.count > 1 ? "-\(index + 1)" : ""
             let filename = "\(timestamp)\(suffix).png"
 
+            // Convert to actual PNG (API may return WebP/JPEG)
+            let pngData = convertToPNG(data) ?? data
+
             // Save full image
             let imagePath = "generations/\(filename)"
             let imageURL = folder.appendingPathComponent(imagePath)
-            try data.write(to: imageURL)
+            try pngData.write(to: imageURL)
             imagePaths.append(imagePath)
 
             // Generate and save thumbnail
             let thumbPath = ".thumbnails/\(filename)"
             let thumbURL = folder.appendingPathComponent(thumbPath)
-            if let thumbnailData = generateThumbnail(from: data, maxSize: 256) {
+            if let thumbnailData = generateThumbnail(from: pngData, maxSize: 256) {
                 try thumbnailData.write(to: thumbURL)
                 thumbnailPaths.append(thumbPath)
             }
+        }
+
+        // Write companion .meta file
+        if let meta {
+            let metaPath = generationsDir.appendingPathComponent("\(timestamp).meta")
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = .prettyPrinted
+            try? encoder.encode(meta).write(to: metaPath)
         }
 
         return (imagePaths, thumbnailPaths)
@@ -241,27 +254,29 @@ class ProjectManager {
 
     // MARK: - Reference Images
 
-    func saveReferenceImages(_ images: [Data], toFolder folder: URL) -> [String] {
+    func saveReferenceImages(_ images: [Data], toFolder folder: URL) -> (paths: [String], hashes: [String]) {
         let referencesDir = folder.appendingPathComponent("references")
         try? fileManager.createDirectory(at: referencesDir, withIntermediateDirectories: true)
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let timestamp = formatter.string(from: Date())
-
         var paths: [String] = []
-        for (index, data) in images.enumerated() {
-            let filename = "ref-\(timestamp)-\(index).png"
+        var hashes: [String] = []
+        for data in images {
+            let hash = sha256Hex(data)
+            let filename = "\(hash).png"
             let relativePath = "references/\(filename)"
             let fileURL = folder.appendingPathComponent(relativePath)
-            do {
-                try data.write(to: fileURL)
-                paths.append(relativePath)
-            } catch {
-                continue
+            // Skip write if file already exists (dedup)
+            if !fileManager.fileExists(atPath: fileURL.path) {
+                do {
+                    try data.write(to: fileURL)
+                } catch {
+                    continue
+                }
             }
+            paths.append(relativePath)
+            hashes.append(hash)
         }
-        return paths
+        return (paths, hashes)
     }
 
     // MARK: - Project Size
@@ -280,6 +295,22 @@ class ProjectManager {
             totalSize += Int64(size)
         }
         return totalSize
+    }
+
+    // MARK: - Image Conversion
+
+    private func convertToPNG(_ data: Data) -> Data? {
+        #if os(macOS)
+        guard let image = NSImage(data: data),
+              let tiffData = image.tiffRepresentation,
+              let bitmapRep = NSBitmapImageRep(data: tiffData),
+              let pngData = bitmapRep.representation(using: .png, properties: [:]) else { return nil }
+        return pngData
+        #else
+        guard let image = UIImage(data: data),
+              let pngData = image.pngData() else { return nil }
+        return pngData
+        #endif
     }
 
     // MARK: - Thumbnails
@@ -358,6 +389,10 @@ class ProjectManager {
     }
 
     // MARK: - Helpers
+
+    private func sha256Hex(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
 
     private func sanitize(_ name: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(.init(charactersIn: "-_ "))

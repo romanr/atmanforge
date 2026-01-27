@@ -14,44 +14,13 @@ class ReplicateProvider: AIProvider {
     func generateImage(request: GenerationRequest, onPredictionCreated: @Sendable @escaping (String) -> Void) async throws -> GenerationResult {
         let input = try await buildInput(for: request)
 
-        // Gemini models produce 1 image per call; run multiple calls in parallel
-        let callCount: Int
-        switch request.model {
-        case .gemini25, .gemini30:
-            callCount = request.imageCount
-        case .gptImage15:
-            callCount = 1 // GPT handles multiple via number_of_images param
-        }
-
-        let allImageData: [Data]
-        if callCount > 1 {
-            allImageData = try await withThrowingTaskGroup(of: [Data].self) { group in
-                for _ in 0..<callCount {
-                    group.addTask {
-                        let prediction = try await self.createPrediction(
-                            model: request.model.replicateModelID,
-                            input: input
-                        )
-                        onPredictionCreated(prediction.urls.cancel)
-                        let final = try await self.pollPrediction(prediction)
-                        return try await self.downloadImages(from: final)
-                    }
-                }
-                var results: [Data] = []
-                for try await batch in group {
-                    results.append(contentsOf: batch)
-                }
-                return results
-            }
-        } else {
-            let prediction = try await createPrediction(
-                model: request.model.replicateModelID,
-                input: input
-            )
-            onPredictionCreated(prediction.urls.cancel)
-            let finalPrediction = try await pollPrediction(prediction)
-            allImageData = try await downloadImages(from: finalPrediction)
-        }
+        let prediction = try await createPrediction(
+            model: request.model.replicateModelID,
+            input: input
+        )
+        onPredictionCreated(prediction.urls.cancel)
+        let finalPrediction = try await pollPrediction(prediction)
+        let allImageData = try await downloadImages(from: finalPrediction)
 
         return GenerationResult(imageDataArray: allImageData)
     }
@@ -86,6 +55,8 @@ class ReplicateProvider: AIProvider {
             print("[Replicate] No reference images to upload")
         }
 
+        input["number_of_images"] = request.imageCount
+
         switch request.model {
         case .gemini25:
             break
@@ -96,7 +67,6 @@ class ReplicateProvider: AIProvider {
             }
 
         case .gptImage15:
-            input["number_of_images"] = request.imageCount
             if let quality = request.gptQuality {
                 input["quality"] = quality.rawValue
             }

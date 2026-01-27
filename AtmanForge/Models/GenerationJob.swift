@@ -203,3 +203,16 @@ struct ActivityRecord: Codable {
         completedAt = try container.decodeIfPresent(Date.self, forKey: .completedAt)
     }
 }
+
+struct ImageMeta: Codable {
+    let prompt: String
+    let model: AIModel
+    let aspectRatio: AspectRatio
+    let resolution: ImageResolution?
+    let imageCount: Int
+    let gptQuality: GPTQuality?
+    let gptBackground: GPTBackground?
+    let gptInputFidelity: GPTInputFidelity?
+    let referenceHashes: [String]
+    let createdAt: Date
+}
