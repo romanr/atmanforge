@@ -245,6 +245,7 @@ struct ActivityView: View {
 }
 
 struct ThumbnailHoverView: View {
+    @Environment(AppState.self) private var appState
     let url: URL
     let width: CGFloat
     let height: CGFloat
@@ -285,6 +286,27 @@ struct ThumbnailHoverView: View {
                 #endif
             } label: {
                 Label("Show in Finder", systemImage: "folder")
+            }
+
+            Divider()
+
+            Button {
+                if let data = try? Data(contentsOf: fileURL) {
+                    appState.addReferenceImages([data])
+                }
+            } label: {
+                Label("Add to Reference", systemImage: "photo.on.rectangle.angled")
+            }
+
+            Button {
+                appState.prompt = ""
+                appState.referenceImages.removeAll()
+                if let data = try? Data(contentsOf: fileURL) {
+                    appState.addReferenceImages([data])
+                }
+                appState.commitUndoCheckpoint()
+            } label: {
+                Label("Edit", systemImage: "pencil")
             }
         }
     }

@@ -6,6 +6,7 @@ struct AIGenerationPanel: View {
     @Environment(AppState.self) private var appState
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isDropTargeted = false
+    @State private var promptDebounceTask: Task<Void, Never>?
 
     var body: some View {
         @Bindable var appState = appState
@@ -294,6 +295,38 @@ struct AIGenerationPanel: View {
                     .foregroundStyle(.red)
                     .lineLimit(3)
             }
+        }
+        .onChange(of: appState.prompt) {
+            promptDebounceTask?.cancel()
+            promptDebounceTask = Task {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                appState.commitUndoCheckpoint()
+            }
+        }
+        .onChange(of: appState.selectedModel) {
+            appState.commitUndoCheckpoint()
+        }
+        .onChange(of: appState.selectedAspectRatio) {
+            appState.commitUndoCheckpoint()
+        }
+        .onChange(of: appState.selectedResolution) {
+            appState.commitUndoCheckpoint()
+        }
+        .onChange(of: appState.imageCount) {
+            appState.commitUndoCheckpoint()
+        }
+        .onChange(of: appState.gptQuality) {
+            appState.commitUndoCheckpoint()
+        }
+        .onChange(of: appState.gptBackground) {
+            appState.commitUndoCheckpoint()
+        }
+        .onChange(of: appState.gptInputFidelity) {
+            appState.commitUndoCheckpoint()
+        }
+        .onChange(of: appState.referenceImages) {
+            appState.commitUndoCheckpoint()
         }
     }
 

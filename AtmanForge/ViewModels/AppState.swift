@@ -5,6 +5,18 @@ enum CenterTab: String, CaseIterable {
     case library
 }
 
+struct GenerationParamsSnapshot: Equatable {
+    let prompt: String
+    let selectedModel: AIModel
+    let selectedResolution: ImageResolution
+    let selectedAspectRatio: AspectRatio
+    let imageCount: Int
+    let referenceImages: [Data]
+    let gptQuality: GPTQuality
+    let gptBackground: GPTBackground
+    let gptInputFidelity: GPTInputFidelity
+}
+
 @MainActor
 @Observable
 class AppState {
@@ -43,6 +55,15 @@ class AppState {
     var gptBackground: GPTBackground = .auto
     var gptInputFidelity: GPTInputFidelity = .high
 
+    // MARK: - Undo/Redo
+    var undoStack: [GenerationParamsSnapshot] = []
+    var redoStack: [GenerationParamsSnapshot] = []
+    var lastCommittedSnapshot: GenerationParamsSnapshot?
+    var isRestoringSnapshot = false
+
+    var canUndo: Bool { !undoStack.isEmpty }
+    var canRedo: Bool { !redoStack.isEmpty }
+
     // MARK: - Jobs
     var generationJobs: [GenerationJob] = []
     var activeJobID: UUID?
@@ -56,6 +77,7 @@ class AppState {
 
     init() {
         hasProjectsRoot = ProjectManager.shared.projectsRootURL != nil
+        lastCommittedSnapshot = currentSnapshot()
     }
 
     var selectedProject: Project? {
@@ -111,6 +133,62 @@ class AppState {
         }
     }
 
+    // MARK: - Undo/Redo
+
+    func currentSnapshot() -> GenerationParamsSnapshot {
+        GenerationParamsSnapshot(
+            prompt: prompt,
+            selectedModel: selectedModel,
+            selectedResolution: selectedResolution,
+            selectedAspectRatio: selectedAspectRatio,
+            imageCount: imageCount,
+            referenceImages: referenceImages,
+            gptQuality: gptQuality,
+            gptBackground: gptBackground,
+            gptInputFidelity: gptInputFidelity
+        )
+    }
+
+    func commitUndoCheckpoint() {
+        guard !isRestoringSnapshot else { return }
+        let current = currentSnapshot()
+        guard let last = lastCommittedSnapshot, last != current else { return }
+        undoStack.append(last)
+        if undoStack.count > 30 {
+            undoStack.removeFirst()
+        }
+        redoStack.removeAll()
+        lastCommittedSnapshot = current
+    }
+
+    func undo() {
+        commitUndoCheckpoint()
+        guard let snapshot = undoStack.popLast() else { return }
+        redoStack.append(currentSnapshot())
+        restore(snapshot)
+    }
+
+    func redo() {
+        guard let snapshot = redoStack.popLast() else { return }
+        undoStack.append(currentSnapshot())
+        restore(snapshot)
+    }
+
+    private func restore(_ snapshot: GenerationParamsSnapshot) {
+        isRestoringSnapshot = true
+        prompt = snapshot.prompt
+        selectedModel = snapshot.selectedModel
+        selectedResolution = snapshot.selectedResolution
+        selectedAspectRatio = snapshot.selectedAspectRatio
+        imageCount = snapshot.imageCount
+        referenceImages = snapshot.referenceImages
+        gptQuality = snapshot.gptQuality
+        gptBackground = snapshot.gptBackground
+        gptInputFidelity = snapshot.gptInputFidelity
+        lastCommittedSnapshot = snapshot
+        isRestoringSnapshot = false
+    }
+
     func addReferenceImages(_ images: [Data]) {
         let remaining = selectedModel.maxReferenceImages - referenceImages.count
         guard remaining > 0 else { return }
@@ -119,11 +197,13 @@ class AppState {
                 referenceImages.append(normalized)
             }
         }
+        commitUndoCheckpoint()
     }
 
     func removeReferenceImage(at index: Int) {
         guard referenceImages.indices.contains(index) else { return }
         referenceImages.remove(at: index)
+        commitUndoCheckpoint()
     }
 
     /// Convert arbitrary image data to PNG for consistent API handling
@@ -176,6 +256,7 @@ class AppState {
         if let f = job.gptInputFidelity {
             gptInputFidelity = f
         }
+        commitUndoCheckpoint()
     }
 
     // MARK: - Project Operations

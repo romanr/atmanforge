@@ -72,6 +72,9 @@ struct ImageInspectorView: View {
                     .onDrag {
                         NSItemProvider(contentsOf: imageURL) ?? NSItemProvider()
                     }
+                    .contextMenu {
+                        imageContextMenu(imageURL: imageURL)
+                    }
             }
             #else
             if let data = try? Data(contentsOf: imageURL), let uiImage = UIImage(data: data) {
@@ -82,8 +85,43 @@ struct ImageInspectorView: View {
                     .onDrag {
                         NSItemProvider(contentsOf: imageURL) ?? NSItemProvider()
                     }
+                    .contextMenu {
+                        imageContextMenu(imageURL: imageURL)
+                    }
             }
             #endif
+        }
+    }
+
+    @ViewBuilder
+    private func imageContextMenu(imageURL: URL) -> some View {
+        #if os(macOS)
+        Button {
+            NSWorkspace.shared.activateFileViewerSelecting([imageURL])
+        } label: {
+            Label("Show in Finder", systemImage: "folder")
+        }
+
+        Divider()
+        #endif
+
+        Button {
+            if let data = try? Data(contentsOf: imageURL) {
+                appState.addReferenceImages([data])
+            }
+        } label: {
+            Label("Add to Reference", systemImage: "photo.on.rectangle.angled")
+        }
+
+        Button {
+            appState.prompt = ""
+            appState.referenceImages.removeAll()
+            if let data = try? Data(contentsOf: imageURL) {
+                appState.addReferenceImages([data])
+            }
+            appState.commitUndoCheckpoint()
+        } label: {
+            Label("Edit", systemImage: "pencil")
         }
     }
 

@@ -11,6 +11,14 @@ struct AtmanForgeApp: App {
         }
         .commands {
             ProjectCommands(appState: appState)
+            CommandGroup(replacing: .undoRedo) {
+                Button("Undo") { appState.undo() }
+                    .keyboardShortcut("z", modifiers: .command)
+                    .disabled(!appState.canUndo)
+                Button("Redo") { appState.redo() }
+                    .keyboardShortcut("z", modifiers: [.command, .shift])
+                    .disabled(!appState.canRedo)
+            }
         }
 
         #if os(macOS)
