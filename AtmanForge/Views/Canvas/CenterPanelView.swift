@@ -119,6 +119,11 @@ struct CenterPanelView: View {
                     .clipShape(Capsule())
             }
             Spacer()
+            if !appState.projectSizeText.isEmpty {
+                Text(appState.projectSizeText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)

@@ -239,6 +239,49 @@ class ProjectManager {
         return (imagePaths, thumbnailPaths)
     }
 
+    // MARK: - Reference Images
+
+    func saveReferenceImages(_ images: [Data], toFolder folder: URL) -> [String] {
+        let referencesDir = folder.appendingPathComponent("references")
+        try? fileManager.createDirectory(at: referencesDir, withIntermediateDirectories: true)
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let timestamp = formatter.string(from: Date())
+
+        var paths: [String] = []
+        for (index, data) in images.enumerated() {
+            let filename = "ref-\(timestamp)-\(index).png"
+            let relativePath = "references/\(filename)"
+            let fileURL = folder.appendingPathComponent(relativePath)
+            do {
+                try data.write(to: fileURL)
+                paths.append(relativePath)
+            } catch {
+                continue
+            }
+        }
+        return paths
+    }
+
+    // MARK: - Project Size
+
+    func projectSize(at url: URL) -> Int64 {
+        let enumerator = fileManager.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )
+        var totalSize: Int64 = 0
+        while let fileURL = enumerator?.nextObject() as? URL {
+            guard let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
+                  values.isRegularFile == true,
+                  let size = values.fileSize else { continue }
+            totalSize += Int64(size)
+        }
+        return totalSize
+    }
+
     // MARK: - Thumbnails
 
     private func generateThumbnail(from imageData: Data, maxSize: CGFloat) -> Data? {
@@ -308,7 +351,7 @@ class ProjectManager {
     func saveActivity(_ jobs: [GenerationJob], to folder: URL) {
         let activityURL = folder.appendingPathComponent(".activity.json")
         let records = jobs
-            .filter { $0.status == .completed || $0.status == .failed }
+            .filter { $0.status == .completed || $0.status == .failed || $0.status == .cancelled }
             .map { $0.toRecord() }
         guard let data = try? encoder.encode(records) else { return }
         try? data.write(to: activityURL)

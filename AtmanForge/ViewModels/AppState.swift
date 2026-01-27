@@ -26,6 +26,7 @@ class AppState {
     var canvasOffset: CGSize = .zero
     var imageVersion = 0
     var errorMessage: String?
+    var projectSizeText: String = ""
 
     // MARK: - Image Inspector
     var selectedImageJob: GenerationJob?
@@ -77,6 +78,18 @@ class AppState {
 
     var runningJobCount: Int {
         generationJobs.filter { $0.status == .running || $0.status == .pending }.count
+    }
+
+    func estimatedDuration(for model: AIModel) -> TimeInterval? {
+        let completed = generationJobs.filter {
+            $0.model == model && $0.status == .completed &&
+            $0.startedAt != nil && $0.completedAt != nil
+        }
+        guard !completed.isEmpty else { return nil }
+        let total = completed.reduce(0.0) { sum, job in
+            sum + job.completedAt!.timeIntervalSince(job.startedAt!)
+        }
+        return total / Double(completed.count)
     }
 
     // MARK: - Model Changed
@@ -178,6 +191,7 @@ class AppState {
             statusMessage = "Failed to load projects: \(error.localizedDescription)"
         }
         loadActivity()
+        updateProjectSize()
     }
 
     func createProject(name: String) {
@@ -293,8 +307,15 @@ class AppState {
         generationJobs.insert(job, at: 0)
         activeJobID = job.id
 
+        // Save reference images to project folder
+        if !currentReferenceImages.isEmpty {
+            let refPaths = projectManager.saveReferenceImages(currentReferenceImages, toFolder: projectRoot)
+            job.referenceImagePaths = refPaths
+        }
+
         errorMessage = nil
         statusMessage = "Generating with \(currentModel.displayName)..."
+        job.startedAt = Date()
         job.status = .running
 
         let request = GenerationRequest(
@@ -313,7 +334,15 @@ class AppState {
 
         Task {
             do {
-                let result = try await provider.generateImage(request: request)
+                let result = try await provider.generateImage(request: request) { [weak self] cancelURL in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        if job.startedAt == nil {
+                            job.startedAt = Date()
+                        }
+                        job.cancelURLs.append(cancelURL)
+                    }
+                }
 
                 guard !result.imageDataArray.isEmpty else {
                     throw ReplicateError.noOutput
@@ -324,17 +353,65 @@ class AppState {
                 job.resultImageData = result.imageDataArray
                 job.savedImagePaths = saved.imagePaths
                 job.thumbnailPaths = saved.thumbnailPaths
+                job.completedAt = Date()
                 job.status = .completed
                 imageVersion += 1
                 statusMessage = "Saved \(saved.imagePaths.count) image\(saved.imagePaths.count == 1 ? "" : "s")"
                 saveActivity()
             } catch {
-                job.status = .failed
-                job.errorMessage = error.localizedDescription
-                errorMessage = error.localizedDescription
-                statusMessage = "Generation failed."
+                if job.status != .cancelled {
+                    job.completedAt = Date()
+                    job.status = .failed
+                    job.errorMessage = error.localizedDescription
+                    errorMessage = error.localizedDescription
+                    statusMessage = "Generation failed."
+                }
                 saveActivity()
             }
+        }
+    }
+
+    func cancelJob(_ job: GenerationJob) {
+        guard job.status == .running || job.status == .pending else { return }
+
+        let cancelURLs = job.cancelURLs
+        job.completedAt = Date()
+        job.status = .cancelled
+        statusMessage = "Cancelled"
+        saveActivity()
+
+        guard let apiKey = KeychainManager.load(key: "replicate_api_key"), !apiKey.isEmpty else { return }
+        let provider = ReplicateProvider(apiKey: apiKey)
+
+        Task.detached {
+            for url in cancelURLs {
+                try? await provider.cancelPrediction(url: url)
+            }
+        }
+    }
+
+    func removeJob(_ job: GenerationJob) {
+        generationJobs.removeAll { $0.id == job.id }
+        if selectedImageJob?.id == job.id {
+            clearImageSelection()
+        }
+        saveActivity()
+    }
+
+    // MARK: - Project Size
+
+    func updateProjectSize() {
+        guard let root = projectManager.projectsRootURL else {
+            projectSizeText = ""
+            return
+        }
+        let bytes = projectManager.projectSize(at: root)
+        let mb = Double(bytes) / (1024 * 1024)
+        if mb >= 1000 {
+            let gb = mb / 1024
+            projectSizeText = String(format: "%.1f GB", gb)
+        } else {
+            projectSizeText = String(format: "%.1f MB", mb)
         }
     }
 
@@ -373,6 +450,7 @@ class AppState {
     func saveActivity() {
         guard let root = projectManager.projectsRootURL else { return }
         projectManager.saveActivity(generationJobs, to: root)
+        updateProjectSize()
     }
 
     func closeProject() {

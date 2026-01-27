@@ -17,5 +17,5 @@ struct GenerationResult {
 }
 
 protocol AIProvider {
-    func generateImage(request: GenerationRequest) async throws -> GenerationResult
+    func generateImage(request: GenerationRequest, onPredictionCreated: @Sendable @escaping (String) -> Void) async throws -> GenerationResult
 }

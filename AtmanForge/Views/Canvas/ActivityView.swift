@@ -6,6 +6,7 @@ import AppKit
 struct ActivityView: View {
     @Environment(AppState.self) private var appState
     var thumbnailMaxSize: CGFloat = 64
+    @State private var hoveredJobID: UUID?
 
     private var projectRoot: URL? {
         appState.projectManager.projectsRootURL
@@ -46,6 +47,16 @@ struct ActivityView: View {
             LazyVStack(spacing: 0) {
                 ForEach(appState.generationJobs) { job in
                     jobRow(job)
+                        .onHover { isHovered in
+                            hoveredJobID = isHovered ? job.id : nil
+                        }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                appState.removeJob(job)
+                            } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
+                        }
                     Divider()
                 }
             }
@@ -73,13 +84,55 @@ struct ActivityView: View {
                     Text(job.model.displayName)
                         .font(.subheadline)
                         .fontWeight(.medium)
-                    Text(job.progressText)
-                        .font(.caption)
-                        .foregroundStyle(job.statusColor)
+                    if (job.status == .completed || job.status == .failed || job.status == .cancelled) && hoveredJobID == job.id {
+                        HStack(spacing: 8) {
+                            Button {
+                                appState.prompt = job.prompt
+                            } label: {
+                                Label("Reuse Prompt", systemImage: "text.quote")
+                                    .font(.caption2)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Color.accentColor)
+
+                            Button {
+                                appState.loadSettings(from: job)
+                            } label: {
+                                Label("Reuse Parameters", systemImage: "arrow.counterclockwise")
+                                    .font(.caption2)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Color.accentColor)
+                        }
+                    } else if job.status != .completed {
+                        Text(job.progressText)
+                            .font(.caption)
+                            .foregroundStyle(job.statusColor)
+                    }
                     Spacer()
-                    Text(relativeTime(job.createdAt))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                    if job.status == .running || job.status == .pending {
+                        elapsedTimeView(job: job)
+                    } else if let elapsed = job.elapsedTime, job.startedAt != nil {
+                        Text(Self.formatDuration(elapsed))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                    if job.status == .running || job.status == .pending {
+                        Button {
+                            appState.cancelJob(job)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Cancel generation")
+                    } else {
+                        Text(relativeTime(job.createdAt))
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
 
                 Text(job.prompt)
@@ -119,33 +172,46 @@ struct ActivityView: View {
                         .lineLimit(2)
                 }
 
-                if job.status == .completed || job.status == .failed {
-                    HStack(spacing: 12) {
-                        Button {
-                            appState.prompt = job.prompt
-                        } label: {
-                            Label("Reuse Prompt", systemImage: "text.quote")
-                                .font(.caption2)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Color.accentColor)
-
-                        Button {
-                            appState.loadSettings(from: job)
-                        } label: {
-                            Label("Reuse Parameters", systemImage: "arrow.counterclockwise")
-                                .font(.caption2)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Color.accentColor)
-                    }
-                    .padding(.top, 2)
-                }
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(job.status == .running ? Color.accentColor.opacity(0.05) : Color.clear)
+        .contentShape(Rectangle())
+        .background(hoveredJobID == job.id
+            ? Color.primary.opacity(0.06)
+            : (job.status == .running ? Color.accentColor.opacity(0.05) : Color.clear)
+        )
+    }
+
+    private func elapsedTimeView(job: GenerationJob) -> some View {
+        let estimate = appState.estimatedDuration(for: job.model)
+        return TimelineView(.periodic(from: .now, by: 1)) { context in
+            if let start = job.startedAt {
+                let elapsed = context.date.timeIntervalSince(start)
+                if let est = estimate {
+                    Text("\(Self.formatDuration(elapsed)) (est. \(Self.formatDuration(est)))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                } else {
+                    Text(Self.formatDuration(elapsed))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            }
+        }
+    }
+
+    static func formatDuration(_ interval: TimeInterval) -> String {
+        let seconds = Int(interval)
+        if seconds < 60 {
+            return "\(seconds)s"
+        } else {
+            let minutes = seconds / 60
+            let remainder = seconds % 60
+            return "\(minutes)m \(remainder)s"
+        }
     }
 
     private func thumbnailImage(_ url: URL, aspectRatio: AspectRatio, isSelected: Bool = false, savedImageURL: URL? = nil, onTap: (() -> Void)? = nil) -> some View {

@@ -20,13 +20,26 @@ class GenerationJob: Identifiable {
     var resultImageData: [Data] = []
     var savedImagePaths: [String] = []
     var thumbnailPaths: [String] = []
+    var referenceImagePaths: [String] = []
     var errorMessage: String?
+
+    // Cancel & timing (transient, not persisted except startedAt/completedAt)
+    var cancelURLs: [String] = []
+    var startedAt: Date?
+    var completedAt: Date?
 
     enum Status: String, Codable {
         case pending
         case running
         case completed
         case failed
+        case cancelled
+    }
+
+    var elapsedTime: TimeInterval? {
+        guard let start = startedAt else { return nil }
+        let end = completedAt ?? Date()
+        return end.timeIntervalSince(start)
     }
 
     init(model: AIModel, prompt: String, projectID: String,
@@ -61,7 +74,10 @@ class GenerationJob: Identifiable {
         self.status = record.status
         self.savedImagePaths = record.savedImagePaths
         self.thumbnailPaths = record.thumbnailPaths
+        self.referenceImagePaths = record.referenceImagePaths
         self.errorMessage = record.errorMessage
+        self.startedAt = record.startedAt
+        self.completedAt = record.completedAt
     }
 
     func toRecord() -> ActivityRecord {
@@ -71,7 +87,9 @@ class GenerationJob: Identifiable {
             imageCount: imageCount, gptQuality: gptQuality,
             gptBackground: gptBackground, gptInputFidelity: gptInputFidelity,
             status: status, savedImagePaths: savedImagePaths,
-            thumbnailPaths: thumbnailPaths, errorMessage: errorMessage
+            thumbnailPaths: thumbnailPaths, referenceImagePaths: referenceImagePaths,
+            errorMessage: errorMessage,
+            startedAt: startedAt, completedAt: completedAt
         )
     }
 
@@ -91,6 +109,7 @@ class GenerationJob: Identifiable {
         case .running: return "Generating..."
         case .completed: return "Completed"
         case .failed: return errorMessage ?? "Failed"
+        case .cancelled: return "Cancelled"
         }
     }
 
@@ -100,6 +119,7 @@ class GenerationJob: Identifiable {
         case .running: return "arrow.trianglehead.2.counterclockwise"
         case .completed: return "checkmark.circle.fill"
         case .failed: return "xmark.circle.fill"
+        case .cancelled: return "stop.circle.fill"
         }
     }
 
@@ -109,6 +129,7 @@ class GenerationJob: Identifiable {
         case .running: return .blue
         case .completed: return .green
         case .failed: return .red
+        case .cancelled: return .orange
         }
     }
 }
@@ -128,5 +149,57 @@ struct ActivityRecord: Codable {
     let status: GenerationJob.Status
     let savedImagePaths: [String]
     let thumbnailPaths: [String]
+    let referenceImagePaths: [String]
     let errorMessage: String?
+    let startedAt: Date?
+    let completedAt: Date?
+
+    init(id: UUID, model: AIModel, prompt: String, projectID: String,
+         createdAt: Date, aspectRatio: AspectRatio, resolution: ImageResolution?,
+         imageCount: Int, gptQuality: GPTQuality?, gptBackground: GPTBackground?,
+         gptInputFidelity: GPTInputFidelity?, status: GenerationJob.Status,
+         savedImagePaths: [String], thumbnailPaths: [String], referenceImagePaths: [String] = [],
+         errorMessage: String?,
+         startedAt: Date? = nil, completedAt: Date? = nil) {
+        self.id = id
+        self.model = model
+        self.prompt = prompt
+        self.projectID = projectID
+        self.createdAt = createdAt
+        self.aspectRatio = aspectRatio
+        self.resolution = resolution
+        self.imageCount = imageCount
+        self.gptQuality = gptQuality
+        self.gptBackground = gptBackground
+        self.gptInputFidelity = gptInputFidelity
+        self.status = status
+        self.savedImagePaths = savedImagePaths
+        self.thumbnailPaths = thumbnailPaths
+        self.referenceImagePaths = referenceImagePaths
+        self.errorMessage = errorMessage
+        self.startedAt = startedAt
+        self.completedAt = completedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        model = try container.decode(AIModel.self, forKey: .model)
+        prompt = try container.decode(String.self, forKey: .prompt)
+        projectID = try container.decode(String.self, forKey: .projectID)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        aspectRatio = try container.decode(AspectRatio.self, forKey: .aspectRatio)
+        resolution = try container.decodeIfPresent(ImageResolution.self, forKey: .resolution)
+        imageCount = try container.decode(Int.self, forKey: .imageCount)
+        gptQuality = try container.decodeIfPresent(GPTQuality.self, forKey: .gptQuality)
+        gptBackground = try container.decodeIfPresent(GPTBackground.self, forKey: .gptBackground)
+        gptInputFidelity = try container.decodeIfPresent(GPTInputFidelity.self, forKey: .gptInputFidelity)
+        status = try container.decode(GenerationJob.Status.self, forKey: .status)
+        savedImagePaths = try container.decode([String].self, forKey: .savedImagePaths)
+        thumbnailPaths = try container.decode([String].self, forKey: .thumbnailPaths)
+        referenceImagePaths = try container.decodeIfPresent([String].self, forKey: .referenceImagePaths) ?? []
+        errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+        startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
+        completedAt = try container.decodeIfPresent(Date.self, forKey: .completedAt)
+    }
 }

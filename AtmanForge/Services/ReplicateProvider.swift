@@ -11,7 +11,7 @@ class ReplicateProvider: AIProvider {
         self.apiKey = apiKey
     }
 
-    func generateImage(request: GenerationRequest) async throws -> GenerationResult {
+    func generateImage(request: GenerationRequest, onPredictionCreated: @Sendable @escaping (String) -> Void) async throws -> GenerationResult {
         let input = try await buildInput(for: request)
 
         // Gemini models produce 1 image per call; run multiple calls in parallel
@@ -32,6 +32,7 @@ class ReplicateProvider: AIProvider {
                             model: request.model.replicateModelID,
                             input: input
                         )
+                        onPredictionCreated(prediction.urls.cancel)
                         let final = try await self.pollPrediction(prediction)
                         return try await self.downloadImages(from: final)
                     }
@@ -47,11 +48,23 @@ class ReplicateProvider: AIProvider {
                 model: request.model.replicateModelID,
                 input: input
             )
+            onPredictionCreated(prediction.urls.cancel)
             let finalPrediction = try await pollPrediction(prediction)
             allImageData = try await downloadImages(from: finalPrediction)
         }
 
         return GenerationResult(imageDataArray: allImageData)
+    }
+
+    func cancelPrediction(url: String) async throws {
+        guard let cancelURL = URL(string: url) else {
+            throw ReplicateError.invalidURL
+        }
+        var urlRequest = URLRequest(url: cancelURL)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        let (_, response) = try await session.data(for: urlRequest)
+        try validateResponse(response, data: Data())
     }
 
     // MARK: - Input Building
