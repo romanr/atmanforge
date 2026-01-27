@@ -15,7 +15,7 @@ struct ImageInspectorView: View {
     @Environment(AppState.self) private var appState
 
     @State private var selectedReferenceIndex: Int = 0
-    @State private var comparisonPosition: CGFloat = 1.0
+    @State private var comparisonPosition: CGFloat = 0.0
 
     private var job: GenerationJob? {
         appState.selectedImageJob
@@ -52,11 +52,11 @@ struct ImageInspectorView: View {
             #endif
             .onChange(of: appState.selectedImageJob?.id) { _, _ in
                 selectedReferenceIndex = 0
-                comparisonPosition = 1.0
+                comparisonPosition = 0.0
             }
             .onChange(of: appState.selectedImageIndex) { _, _ in
                 selectedReferenceIndex = 0
-                comparisonPosition = 1.0
+                comparisonPosition = 0.0
             }
         }
     }
@@ -81,7 +81,7 @@ struct ImageInspectorView: View {
 
     @ViewBuilder
     private func comparisonImageView(_ job: GenerationJob) -> some View {
-        if job.referenceImagePaths.isEmpty {
+        if job.referenceImagePaths.isEmpty || job.model == .removeBackground {
             fullImage(job)
         } else {
             comparisonSlider(job)
@@ -263,6 +263,7 @@ struct ImageInspectorView: View {
                 Image(nsImage: nsImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+                    .background(checkerboard)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .onDrag {
                         NSItemProvider(contentsOf: imageURL) ?? NSItemProvider()
@@ -276,6 +277,7 @@ struct ImageInspectorView: View {
                 Image(uiImage: uiImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+                    .background(checkerboard)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .onDrag {
                         NSItemProvider(contentsOf: imageURL) ?? NSItemProvider()
@@ -285,6 +287,21 @@ struct ImageInspectorView: View {
                     }
             }
             #endif
+        }
+    }
+
+    private var checkerboard: some View {
+        SwiftUI.Canvas { context, size in
+            let sq: CGFloat = 8
+            for row in 0..<Int(ceil(size.height / sq)) {
+                for col in 0..<Int(ceil(size.width / sq)) {
+                    let isLight = (row + col).isMultiple(of: 2)
+                    context.fill(
+                        Path(CGRect(x: CGFloat(col) * sq, y: CGFloat(row) * sq, width: sq, height: sq)),
+                        with: .color(isLight ? Color(white: 0.9) : Color(white: 0.75))
+                    )
+                }
+            }
         }
     }
 
@@ -327,34 +344,40 @@ struct ImageInspectorView: View {
                 .fontWeight(.semibold)
 
             metadataRow("Model", value: job.model.displayName)
-            metadataRow("Aspect Ratio", value: job.aspectRatio.displayName)
 
-            if let resolution = job.resolution {
-                metadataRow("Resolution", value: resolution.displayName)
-            }
-
-            metadataRow("Image Count", value: "\(job.imageCount)")
-
-            if let quality = job.gptQuality {
-                metadataRow("GPT Quality", value: quality.displayName)
-            }
-            if let background = job.gptBackground {
-                metadataRow("GPT Background", value: background.displayName)
-            }
-            if let fidelity = job.gptInputFidelity {
-                metadataRow("GPT Input Fidelity", value: fidelity.displayName)
+            if imageIndex < job.savedImagePaths.count, let root = projectRoot {
+                let imageURL = root.appendingPathComponent(job.savedImagePaths[imageIndex])
+                if let dimensions = imageSize(url: imageURL) {
+                    metadataRow("Resolution", value: "\(dimensions.width) × \(dimensions.height)")
+                }
+                if let size = fileSize(url: imageURL) {
+                    metadataRow("File Size", value: size)
+                }
             }
 
             metadataRow("Created", value: formattedDate(job.createdAt))
 
-            if imageIndex < job.savedImagePaths.count {
-                metadataRow("File", value: job.savedImagePaths[imageIndex])
-            }
-
             VStack(alignment: .leading, spacing: 4) {
-                Text("Prompt")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Text("Prompt")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        #if os(macOS)
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(job.prompt, forType: .string)
+                        #else
+                        UIPasteboard.general.string = job.prompt
+                        #endif
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy prompt")
+                }
                 Text(job.prompt)
                     .font(.caption)
                     .textSelection(.enabled)
@@ -377,25 +400,76 @@ struct ImageInspectorView: View {
     private func actionButtons(_ job: GenerationJob) -> some View {
         VStack(spacing: 8) {
             Divider()
-            HStack(spacing: 12) {
+
+            VStack(spacing: 6) {
                 Button {
-                    appState.prompt = job.prompt
+                    guard imageIndex < job.savedImagePaths.count, let root = projectRoot else { return }
+                    let imageURL = root.appendingPathComponent(job.savedImagePaths[imageIndex])
+                    guard let data = try? Data(contentsOf: imageURL) else { return }
+                    appState.prompt = ""
+                    appState.referenceImages.removeAll()
+                    appState.addReferenceImages([data])
+                    appState.commitUndoCheckpoint()
                 } label: {
-                    Label("Reuse Prompt", systemImage: "text.quote")
-                        .font(.caption)
+                    Label("Edit Image", systemImage: "pencil")
+                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
 
                 Button {
-                    appState.loadSettings(from: job)
+                    appState.removeBackground(job: job, imageIndex: imageIndex)
                 } label: {
-                    Label("Reuse Parameters", systemImage: "arrow.counterclockwise")
-                        .font(.caption)
+                    HStack {
+                        if appState.isRemovingBackground {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Label("Remove Background", systemImage: "person.and.background.dotted")
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .disabled(appState.isRemovingBackground)
+
+                #if os(macOS)
+                Button {
+                    guard imageIndex < job.savedImagePaths.count, let root = projectRoot else { return }
+                    let imageURL = root.appendingPathComponent(job.savedImagePaths[imageIndex])
+                    NSWorkspace.shared.activateFileViewerSelecting([imageURL])
+                } label: {
+                    Label("Show in Finder", systemImage: "folder")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                #endif
             }
+        }
+    }
+
+    private func imageSize(url: URL) -> (width: Int, height: Int)? {
+        #if os(macOS)
+        guard let image = NSImage(contentsOf: url),
+              let rep = image.representations.first else { return nil }
+        return (rep.pixelsWide, rep.pixelsHigh)
+        #else
+        guard let data = try? Data(contentsOf: url),
+              let image = UIImage(data: data) else { return nil }
+        return (Int(image.size.width * image.scale), Int(image.size.height * image.scale))
+        #endif
+    }
+
+    private func fileSize(url: URL) -> String? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let bytes = attrs[.size] as? Int64 else { return nil }
+        if bytes < 1024 {
+            return "\(bytes) B"
+        } else if bytes < 1024 * 1024 {
+            return String(format: "%.1f KB", Double(bytes) / 1024)
+        } else {
+            return String(format: "%.1f MB", Double(bytes) / (1024 * 1024))
         }
     }
 

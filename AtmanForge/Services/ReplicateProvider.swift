@@ -25,6 +25,43 @@ class ReplicateProvider: AIProvider {
         return GenerationResult(imageDataArray: allImageData)
     }
 
+    func removeBackground(imageData: Data) async throws -> Data {
+        let fileURL = try await uploadFile(imageData, filename: "bg_remove.png")
+
+        let url = URL(string: "\(baseURL)/models/bria/remove-background/predictions")!
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("wait", forHTTPHeaderField: "Prefer")
+        urlRequest.timeoutInterval = 120
+
+        let body: [String: Any] = [
+            "input": [
+                "image": fileURL,
+                "content_moderation": false,
+                "preserve_alpha": true
+            ]
+        ]
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: urlRequest)
+        try validateResponse(response, data: data)
+
+        let prediction = try JSONDecoder().decode(PredictionResponse.self, from: data)
+
+        guard prediction.status == "succeeded" else {
+            let errorMsg = prediction.error ?? "Background removal failed with status: \(prediction.status)"
+            throw ReplicateError.generationFailed(errorMsg)
+        }
+
+        let imageDataArray = try await downloadImages(from: prediction)
+        guard let result = imageDataArray.first else {
+            throw ReplicateError.noOutput
+        }
+        return result
+    }
+
     func cancelPrediction(url: String) async throws {
         guard let cancelURL = URL(string: url) else {
             throw ReplicateError.invalidURL
@@ -58,7 +95,7 @@ class ReplicateProvider: AIProvider {
         input["number_of_images"] = request.imageCount
 
         switch request.model {
-        case .gemini25:
+        case .gemini25, .removeBackground:
             break
 
         case .gemini30:

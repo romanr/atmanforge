@@ -59,16 +59,21 @@ enum AIModelProvider: String, Codable {
     case openai
 }
 
-enum AIModel: String, CaseIterable, Codable {
+enum AIModel: String, Codable {
     case gemini25 = "gemini-2.5"
     case gemini30 = "gemini-3.0"
     case gptImage15 = "gpt-image-1.5"
+    case removeBackground = "remove-background"
+
+    /// Models available for generation (excludes utility models)
+    static let generationModels: [AIModel] = [.gemini25, .gemini30, .gptImage15]
 
     var displayName: String {
         switch self {
         case .gemini25: return "Gemini 2.5"
         case .gemini30: return "Gemini 3.0 Pro"
         case .gptImage15: return "GPT Image 1.5"
+        case .removeBackground: return "Remove Background"
         }
     }
 
@@ -76,6 +81,7 @@ enum AIModel: String, CaseIterable, Codable {
         switch self {
         case .gemini25, .gemini30: return .google
         case .gptImage15: return .openai
+        case .removeBackground: return .google
         }
     }
 
@@ -84,13 +90,14 @@ enum AIModel: String, CaseIterable, Codable {
         case .gemini25: return "google/nano-banana"
         case .gemini30: return "google/nano-banana-pro"
         case .gptImage15: return "openai/gpt-image-1.5"
+        case .removeBackground: return "bria/remove-background"
         }
     }
 
     var supportsResolution: Bool {
         switch self {
         case .gemini30: return true
-        case .gemini25, .gptImage15: return false
+        case .gemini25, .gptImage15, .removeBackground: return false
         }
     }
 
@@ -98,6 +105,7 @@ enum AIModel: String, CaseIterable, Codable {
         switch self {
         case .gemini25, .gemini30: return 4
         case .gptImage15: return 10
+        case .removeBackground: return 1
         }
     }
 
@@ -106,6 +114,7 @@ enum AIModel: String, CaseIterable, Codable {
         case .gemini25: return 6
         case .gemini30: return 14
         case .gptImage15: return 10
+        case .removeBackground: return 1
         }
     }
 
@@ -115,6 +124,8 @@ enum AIModel: String, CaseIterable, Codable {
             return [.r9_16, .r2_3, .r3_4, .r4_5, .r1_1, .r5_4, .r4_3, .r3_2, .r16_9, .r21_9]
         case .gptImage15:
             return [.r2_3, .r1_1, .r3_2]
+        case .removeBackground:
+            return [.r1_1]
         }
     }
 }

@@ -64,6 +64,7 @@ class AppState {
     // MARK: - Image Inspector
     var selectedImageJob: GenerationJob?
     var selectedImageIndex: Int = 0
+    var isRemovingBackground = false
 
     // MARK: - AI Generation
     var prompt = ""
@@ -276,6 +277,16 @@ class AppState {
         }
         if let f = job.gptInputFidelity {
             gptInputFidelity = f
+        }
+        // Restore reference images from saved paths
+        if let root = projectManager.projectsRootURL, !job.referenceImagePaths.isEmpty {
+            referenceImages.removeAll()
+            for path in job.referenceImagePaths {
+                let url = root.appendingPathComponent(path)
+                if let data = try? Data(contentsOf: url) {
+                    referenceImages.append(data)
+                }
+            }
         }
         commitUndoCheckpoint()
     }
@@ -502,6 +513,72 @@ class AppState {
         Task.detached {
             for url in cancelURLs {
                 try? await provider.cancelPrediction(url: url)
+            }
+        }
+    }
+
+    func removeBackground(job: GenerationJob, imageIndex: Int) {
+        guard let projectRoot = projectManager.projectsRootURL else { return }
+        guard imageIndex < job.savedImagePaths.count else { return }
+        guard let apiKey = KeychainManager.load(key: "replicate_api_key"), !apiKey.isEmpty else {
+            errorMessage = "No Replicate API key configured. Add it in Settings."
+            return
+        }
+
+        let imagePath = job.savedImagePaths[imageIndex]
+        let imageURL = projectRoot.appendingPathComponent(imagePath)
+        guard let imageData = try? Data(contentsOf: imageURL) else {
+            errorMessage = "Could not read image file."
+            return
+        }
+
+        // Create job upfront so it appears in the activity list immediately
+        let bgJob = GenerationJob(
+            model: .removeBackground,
+            prompt: job.prompt,
+            projectID: projectRoot.lastPathComponent,
+            aspectRatio: job.aspectRatio,
+            resolution: nil,
+            imageCount: 1,
+            gptQuality: nil,
+            gptBackground: nil,
+            gptInputFidelity: nil
+        )
+        bgJob.referenceImagePaths = [imagePath]
+        bgJob.startedAt = Date()
+        bgJob.status = .running
+        generationJobs.insert(bgJob, at: 0)
+        activeJobID = bgJob.id
+
+        isRemovingBackground = true
+        statusMessage = "Removing background..."
+
+        let provider = ReplicateProvider(apiKey: apiKey)
+
+        Task {
+            do {
+                let resultData = try await provider.removeBackground(imageData: imageData)
+                let saved = try projectManager.saveGeneratedImages([resultData], toFolder: projectRoot)
+
+                bgJob.resultImageData = [resultData]
+                bgJob.savedImagePaths = saved.imagePaths
+                bgJob.thumbnailPaths = saved.thumbnailPaths
+                bgJob.completedAt = Date()
+                bgJob.status = .completed
+
+                selectImage(job: bgJob, index: 0)
+                imageVersion += 1
+                statusMessage = "Background removed"
+                isRemovingBackground = false
+                saveActivity()
+            } catch {
+                bgJob.completedAt = Date()
+                bgJob.status = .failed
+                bgJob.errorMessage = error.localizedDescription
+                errorMessage = error.localizedDescription
+                statusMessage = "Background removal failed."
+                isRemovingBackground = false
+                saveActivity()
             }
         }
     }
