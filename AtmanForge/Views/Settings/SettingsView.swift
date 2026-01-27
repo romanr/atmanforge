@@ -3,37 +3,27 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var replicateKey: String = ""
-    @State private var googleAIKey: String = ""
-    @State private var openAIKey: String = ""
     @State private var rootFolderPath: String = ""
     @State private var showSaveConfirmation = false
 
     var body: some View {
         Form {
             Section("API Keys") {
-                SecureField("Google AI API Key", text: $googleAIKey)
-                    .textFieldStyle(.roundedBorder)
-
-                SecureField("OpenAI API Key", text: $openAIKey)
-                    .textFieldStyle(.roundedBorder)
-
                 SecureField("Replicate API Key", text: $replicateKey)
                     .textFieldStyle(.roundedBorder)
 
-                Button("Save API Keys") {
+                Button("Save API Key") {
                     do {
-                        try KeychainManager.save(key: "google_ai_api_key", value: googleAIKey)
-                        try KeychainManager.save(key: "openai_api_key", value: openAIKey)
                         try KeychainManager.save(key: "replicate_api_key", value: replicateKey)
                         showSaveConfirmation = true
                     } catch {
-                        appState.statusMessage = "Failed to save API keys: \(error.localizedDescription)"
+                        appState.statusMessage = "Failed to save API key: \(error.localizedDescription)"
                     }
                 }
-                .disabled(googleAIKey.isEmpty && openAIKey.isEmpty && replicateKey.isEmpty)
+                .disabled(replicateKey.isEmpty)
 
                 if showSaveConfirmation {
-                    Text("API keys saved.")
+                    Text("API key saved.")
                         .foregroundStyle(.green)
                         .font(.caption)
                 }
@@ -58,8 +48,6 @@ struct SettingsView: View {
         .frame(width: 450, height: 300)
         .onAppear {
             replicateKey = KeychainManager.load(key: "replicate_api_key") ?? ""
-            googleAIKey = KeychainManager.load(key: "google_ai_api_key") ?? ""
-            openAIKey = KeychainManager.load(key: "openai_api_key") ?? ""
             rootFolderPath = appState.projectManager.projectsRootURL?.path ?? ""
         }
     }

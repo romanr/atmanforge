@@ -120,10 +120,14 @@ struct ActivityView: View {
                 if job.status == .completed && !job.thumbnailPaths.isEmpty, let root = projectRoot {
                     FlowLayout(spacing: 6) {
                         ForEach(Array(job.thumbnailPaths.enumerated()), id: \.element) { index, thumbPath in
+                            let savedURL = index < job.savedImagePaths.count
+                                ? root.appendingPathComponent(job.savedImagePaths[index])
+                                : nil
                             thumbnailImage(
                                 root.appendingPathComponent(thumbPath),
                                 aspectRatio: job.aspectRatio,
-                                isSelected: appState.selectedImageJob?.id == job.id && appState.selectedImageIndex == index
+                                isSelected: appState.selectedImageJob?.id == job.id && appState.selectedImageIndex == index,
+                                savedImageURL: savedURL
                             ) {
                                 appState.selectImage(job: job, index: index)
                             }
@@ -174,7 +178,7 @@ struct ActivityView: View {
         .background(job.status == .running ? Color.accentColor.opacity(0.05) : Color.clear)
     }
 
-    private func thumbnailImage(_ url: URL, aspectRatio: AspectRatio, isSelected: Bool = false, onTap: (() -> Void)? = nil) -> some View {
+    private func thumbnailImage(_ url: URL, aspectRatio: AspectRatio, isSelected: Bool = false, savedImageURL: URL? = nil, onTap: (() -> Void)? = nil) -> some View {
         let maxDim = thumbnailMaxSize
         let (w, h) = aspectRatio.ratio
         let thumbWidth: CGFloat
@@ -187,7 +191,7 @@ struct ActivityView: View {
             thumbWidth = maxDim * CGFloat(w) / CGFloat(h)
         }
 
-        return ThumbnailHoverView(url: url, width: thumbWidth, height: thumbHeight, isSelected: isSelected, onTap: onTap)
+        return ThumbnailHoverView(url: url, width: thumbWidth, height: thumbHeight, isSelected: isSelected, savedImageURL: savedImageURL, onTap: onTap)
     }
 
     private func relativeTime(_ date: Date) -> String {
@@ -209,6 +213,7 @@ private struct ThumbnailHoverView: View {
     let width: CGFloat
     let height: CGFloat
     var isSelected: Bool = false
+    var savedImageURL: URL?
     var onTap: (() -> Void)?
 
     @State private var isHovered = false
@@ -217,12 +222,27 @@ private struct ThumbnailHoverView: View {
         #if os(macOS)
         if let nsImage = NSImage(contentsOf: url) {
             imageContent(Image(nsImage: nsImage))
+                .contextMenu { contextMenuItems }
         }
         #else
         if let data = try? Data(contentsOf: url), let uiImage = UIImage(data: data) {
             imageContent(Image(uiImage: uiImage))
+                .contextMenu { contextMenuItems }
         }
         #endif
+    }
+
+    @ViewBuilder
+    private var contextMenuItems: some View {
+        if let fileURL = savedImageURL {
+            Button {
+                #if os(macOS)
+                NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+                #endif
+            } label: {
+                Label("Show in Finder", systemImage: "folder")
+            }
+        }
     }
 
     private func imageContent(_ image: Image) -> some View {

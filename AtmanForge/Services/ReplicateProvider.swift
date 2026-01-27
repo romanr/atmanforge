@@ -12,7 +12,7 @@ class ReplicateProvider: AIProvider {
     }
 
     func generateImage(request: GenerationRequest) async throws -> GenerationResult {
-        let input = buildInput(for: request)
+        let input = try await buildInput(for: request)
 
         // Gemini models produce 1 image per call; run multiple calls in parallel
         let callCount: Int
@@ -56,18 +56,16 @@ class ReplicateProvider: AIProvider {
 
     // MARK: - Input Building
 
-    private func buildInput(for request: GenerationRequest) -> [String: Any] {
+    private func buildInput(for request: GenerationRequest) async throws -> [String: Any] {
         var input: [String: Any] = [
             "prompt": request.prompt,
             "aspect_ratio": request.aspectRatio.rawValue,
         ]
 
-        // Add reference images as base64 data URIs
+        // Upload reference images as files and pass their URLs
         if !request.referenceImages.isEmpty {
-            let dataURIs = request.referenceImages.map { data in
-                "data:image/png;base64,\(data.base64EncodedString())"
-            }
-            input["image_input"] = dataURIs
+            let fileURLs = try await uploadReferenceImages(request.referenceImages)
+            input["image_input"] = fileURLs
         }
 
         switch request.model {
@@ -93,6 +91,48 @@ class ReplicateProvider: AIProvider {
         }
 
         return input
+    }
+
+    // MARK: - File Upload
+
+    private func uploadReferenceImages(_ images: [Data]) async throws -> [String] {
+        try await withThrowingTaskGroup(of: (Int, String).self) { group in
+            for (index, imageData) in images.enumerated() {
+                group.addTask {
+                    let url = try await self.uploadFile(imageData, filename: "reference_\(index).png")
+                    return (index, url)
+                }
+            }
+            var results: [(Int, String)] = []
+            for try await result in group {
+                results.append(result)
+            }
+            return results.sorted { $0.0 < $1.0 }.map(\.1)
+        }
+    }
+
+    private func uploadFile(_ data: Data, filename: String) async throws -> String {
+        let url = URL(string: "\(baseURL)/files")!
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        let boundary = UUID().uuidString
+        urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"content\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        urlRequest.httpBody = body
+
+        let (responseData, response) = try await session.data(for: urlRequest)
+        try validateResponse(response, data: responseData)
+
+        let fileResponse = try JSONDecoder().decode(FileUploadResponse.self, from: responseData)
+        return fileResponse.urls.get
     }
 
     // MARK: - API Calls
@@ -190,6 +230,14 @@ private struct PredictionResponse: Codable {
 private struct PredictionURLs: Codable {
     let get: String
     let cancel: String
+}
+
+private struct FileUploadResponse: Codable {
+    let urls: FileURLs
+}
+
+private struct FileURLs: Codable {
+    let get: String
 }
 
 private enum PredictionOutput: Codable {
