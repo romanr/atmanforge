@@ -69,6 +69,9 @@ struct ImageInspectorView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .onDrag {
+                        NSItemProvider(contentsOf: imageURL) ?? NSItemProvider()
+                    }
             }
             #else
             if let data = try? Data(contentsOf: imageURL), let uiImage = UIImage(data: data) {
@@ -76,6 +79,9 @@ struct ImageInspectorView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .onDrag {
+                        NSItemProvider(contentsOf: imageURL) ?? NSItemProvider()
+                    }
             }
             #endif
         }

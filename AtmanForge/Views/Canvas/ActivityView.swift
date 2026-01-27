@@ -259,11 +259,19 @@ struct ThumbnailHoverView: View {
         if let nsImage = NSImage(contentsOf: url) {
             imageContent(Image(nsImage: nsImage))
                 .contextMenu { contextMenuItems }
+                .onDrag {
+                    guard let fileURL = savedImageURL else { return NSItemProvider() }
+                    return NSItemProvider(contentsOf: fileURL) ?? NSItemProvider()
+                }
         }
         #else
         if let data = try? Data(contentsOf: url), let uiImage = UIImage(data: data) {
             imageContent(Image(uiImage: uiImage))
                 .contextMenu { contextMenuItems }
+                .onDrag {
+                    guard let fileURL = savedImageURL else { return NSItemProvider() }
+                    return NSItemProvider(contentsOf: fileURL) ?? NSItemProvider()
+                }
         }
         #endif
     }
