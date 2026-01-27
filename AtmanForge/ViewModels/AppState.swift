@@ -532,6 +532,9 @@ class AppState {
             return
         }
 
+        // Copy the source image to references so it persists independently
+        let refResult = projectManager.saveReferenceImages([imageData], toFolder: projectRoot)
+
         // Create job upfront so it appears in the activity list immediately
         let bgJob = GenerationJob(
             model: .removeBackground,
@@ -544,7 +547,7 @@ class AppState {
             gptBackground: nil,
             gptInputFidelity: nil
         )
-        bgJob.referenceImagePaths = [imagePath]
+        bgJob.referenceImagePaths = refResult.paths
         bgJob.startedAt = Date()
         bgJob.status = .running
         generationJobs.insert(bgJob, at: 0)
@@ -558,7 +561,19 @@ class AppState {
         Task {
             do {
                 let resultData = try await provider.removeBackground(imageData: imageData)
-                let saved = try projectManager.saveGeneratedImages([resultData], toFolder: projectRoot)
+                let meta = ImageMeta(
+                    prompt: bgJob.prompt,
+                    model: .removeBackground,
+                    aspectRatio: bgJob.aspectRatio,
+                    resolution: nil,
+                    imageCount: 1,
+                    gptQuality: nil,
+                    gptBackground: nil,
+                    gptInputFidelity: nil,
+                    referenceHashes: refResult.hashes,
+                    createdAt: Date()
+                )
+                let saved = try projectManager.saveGeneratedImages([resultData], toFolder: projectRoot, meta: meta)
 
                 bgJob.resultImageData = [resultData]
                 bgJob.savedImagePaths = saved.imagePaths

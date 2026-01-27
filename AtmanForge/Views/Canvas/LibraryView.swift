@@ -7,14 +7,21 @@ import ImageIO
 // MARK: - Cached metadata per library image
 
 struct LibraryImageEntry: Identifiable {
-    let id: String
-    let job: GenerationJob
-    let imageIndex: Int
-    let thumbPath: String
+    let id: String            // filename as unique id
+    let imagePath: String     // relative: generations/<file>.png
+    let thumbPath: String     // relative: .thumbnails/<file>.png
     let fileName: String
     let fileSize: UInt64
     let pixelWidth: Int
     let pixelHeight: Int
+    let meta: ImageMeta?
+    // Keep job reference for selection / actions
+    let job: GenerationJob?
+    let imageIndex: Int
+
+    var prompt: String { meta?.prompt ?? job?.prompt ?? "" }
+    var model: AIModel { meta?.model ?? job?.model ?? .gemini25 }
+    var createdAt: Date { meta?.createdAt ?? job?.createdAt ?? Date.distantPast }
 
     var resolutionString: String {
         guard pixelWidth > 0 && pixelHeight > 0 else { return "—" }
@@ -40,43 +47,61 @@ struct LibraryView: View {
         appState.projectManager.projectsRootURL
     }
 
-    // MARK: - Build entries with metadata
+    // MARK: - Build entries from disk + .meta files
 
     private var allEntries: [LibraryImageEntry] {
         guard let root = projectRoot else { return [] }
+        let generationsDir = root.appendingPathComponent("generations")
+        let fm = FileManager.default
 
-        let entries: [LibraryImageEntry] = appState.generationJobs.flatMap { job -> [LibraryImageEntry] in
-            guard job.status == .completed else { return [] }
-            return job.thumbnailPaths.enumerated().compactMap { index, thumbPath -> LibraryImageEntry? in
-                guard index < job.savedImagePaths.count else { return nil }
-                let relativePath = job.savedImagePaths[index]
-                let fileURL = root.appendingPathComponent(relativePath)
-                let fileName = (relativePath as NSString).lastPathComponent
+        guard let files = try? fm.contentsOfDirectory(atPath: generationsDir.path) else { return [] }
+        let pngFiles = files.filter { $0.hasSuffix(".png") }.sorted()
 
-                // File size
-                let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
-                let fileSize = attrs?[.size] as? UInt64 ?? 0
-
-                // Pixel dimensions via CGImageSource (lightweight, no full decode)
-                var pw = 0
-                var ph = 0
-                if let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
-                   let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
-                    pw = props[kCGImagePropertyPixelWidth] as? Int ?? 0
-                    ph = props[kCGImagePropertyPixelHeight] as? Int ?? 0
-                }
-
-                return LibraryImageEntry(
-                    id: "\(job.id)-\(index)",
-                    job: job,
-                    imageIndex: index,
-                    thumbPath: thumbPath,
-                    fileName: fileName,
-                    fileSize: fileSize,
-                    pixelWidth: pw,
-                    pixelHeight: ph
-                )
+        // Build a lookup from image path → (job, index) for selection support
+        var jobLookup: [String: (GenerationJob, Int)] = [:]
+        for job in appState.generationJobs where job.status == .completed {
+            for (index, path) in job.savedImagePaths.enumerated() {
+                jobLookup[path] = (job, index)
             }
+        }
+
+        let entries: [LibraryImageEntry] = pngFiles.compactMap { fileName in
+            let relativePath = "generations/\(fileName)"
+            let fileURL = generationsDir.appendingPathComponent(fileName)
+
+            // Read metadata from .meta file (cached)
+            let meta = appState.projectManager.cachedMeta(forGenerationFile: fileName, inFolder: root)
+
+            // File size
+            let attrs = try? fm.attributesOfItem(atPath: fileURL.path)
+            let fileSize = attrs?[.size] as? UInt64 ?? 0
+
+            // Pixel dimensions via CGImageSource (lightweight, no full decode)
+            var pw = 0
+            var ph = 0
+            if let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
+               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+                pw = props[kCGImagePropertyPixelWidth] as? Int ?? 0
+                ph = props[kCGImagePropertyPixelHeight] as? Int ?? 0
+            }
+
+            let thumbPath = ".thumbnails/\(fileName)"
+
+            // Find matching job for selection
+            let match = jobLookup[relativePath]
+
+            return LibraryImageEntry(
+                id: fileName,
+                imagePath: relativePath,
+                thumbPath: thumbPath,
+                fileName: fileName,
+                fileSize: fileSize,
+                pixelWidth: pw,
+                pixelHeight: ph,
+                meta: meta,
+                job: match?.0,
+                imageIndex: match?.1 ?? 0
+            )
         }
 
         return sortedEntries(entries)
@@ -90,8 +115,8 @@ struct LibraryView: View {
         case .dateAdded:
             sorted = entries.sorted {
                 ascending
-                    ? $0.job.createdAt < $1.job.createdAt
-                    : $0.job.createdAt > $1.job.createdAt
+                    ? $0.createdAt < $1.createdAt
+                    : $0.createdAt > $1.createdAt
             }
         case .name:
             sorted = entries.sorted {
@@ -100,7 +125,7 @@ struct LibraryView: View {
             }
         case .model:
             sorted = entries.sorted {
-                let cmp = $0.job.model.displayName.localizedStandardCompare($1.job.model.displayName)
+                let cmp = $0.model.displayName.localizedStandardCompare($1.model.displayName)
                 return ascending ? cmp == .orderedAscending : cmp == .orderedDescending
             }
         case .resolution:
@@ -323,17 +348,21 @@ struct LibraryView: View {
             ) {
                 ForEach(allEntries) { entry in
                     if let root = projectRoot {
-                        let savedURL = root.appendingPathComponent(entry.job.savedImagePaths[entry.imageIndex])
-                        let isSelected = appState.selectedImageJob?.id == entry.job.id
+                        let savedURL = root.appendingPathComponent(entry.imagePath)
+                        let isSelected = appState.selectedImageJob?.id == entry.job?.id
                             && appState.selectedImageIndex == entry.imageIndex
+
+                        let aspectRatio = entry.meta?.aspectRatio ?? entry.job?.aspectRatio ?? .r1_1
 
                         gridThumbnail(
                             url: root.appendingPathComponent(entry.thumbPath),
-                            aspectRatio: entry.job.aspectRatio,
+                            aspectRatio: aspectRatio,
                             isSelected: isSelected,
                             savedImageURL: savedURL
                         ) {
-                            appState.selectImage(job: entry.job, index: entry.imageIndex)
+                            if let job = entry.job {
+                                appState.selectImage(job: job, index: entry.imageIndex)
+                            }
                         }
                     }
                 }
@@ -372,8 +401,8 @@ struct LibraryView: View {
             LazyVStack(spacing: 0) {
                 ForEach(allEntries) { entry in
                     if let root = projectRoot {
-                        let savedURL = root.appendingPathComponent(entry.job.savedImagePaths[entry.imageIndex])
-                        let isSelected = appState.selectedImageJob?.id == entry.job.id
+                        let savedURL = root.appendingPathComponent(entry.imagePath)
+                        let isSelected = appState.selectedImageJob?.id == entry.job?.id
                             && appState.selectedImageIndex == entry.imageIndex
 
                         listRow(entry: entry, root: root, isSelected: isSelected, savedImageURL: savedURL)
@@ -387,7 +416,9 @@ struct LibraryView: View {
         let thumbURL = root.appendingPathComponent(entry.thumbPath)
 
         return Button {
-            appState.selectImage(job: entry.job, index: entry.imageIndex)
+            if let job = entry.job {
+                appState.selectImage(job: job, index: entry.imageIndex)
+            }
         } label: {
             HStack(spacing: 0) {
                 listThumbnail(url: thumbURL)
@@ -400,7 +431,7 @@ struct LibraryView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(minWidth: 80)
 
-                Text(entry.job.prompt)
+                Text(entry.prompt)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -408,7 +439,7 @@ struct LibraryView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(minWidth: 100)
 
-                Text(entry.job.model.displayName)
+                Text(entry.model.displayName)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -429,7 +460,7 @@ struct LibraryView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(minWidth: 56)
 
-                Text(dateLabel(for: entry.job.createdAt))
+                Text(dateLabel(for: entry.createdAt))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

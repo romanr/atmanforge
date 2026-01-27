@@ -93,25 +93,14 @@ struct ActivityView: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                     if (job.status == .completed || job.status == .failed || job.status == .cancelled) && hoveredJobID == job.id {
-                        HStack(spacing: 8) {
-                            Button {
-                                appState.prompt = job.prompt
-                            } label: {
-                                Label("Reuse Prompt", systemImage: "text.quote")
-                                    .font(.caption2)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(Color.accentColor)
-
-                            Button {
-                                appState.loadSettings(from: job)
-                            } label: {
-                                Label("Reuse Parameters", systemImage: "arrow.counterclockwise")
-                                    .font(.caption2)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(Color.accentColor)
+                        Button {
+                            appState.loadSettings(from: job)
+                        } label: {
+                            Label("Reuse Parameters", systemImage: "arrow.counterclockwise")
+                                .font(.caption2)
                         }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.accentColor)
                     } else if job.status != .completed {
                         Text(job.progressText)
                             .font(.caption)
@@ -143,10 +132,24 @@ struct ActivityView: View {
                     }
                 }
 
-                Text(job.prompt)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                HStack(alignment: .top, spacing: 4) {
+                    Text(job.prompt)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    if !job.prompt.isEmpty {
+                        Button {
+                            copyToClipboard(job.prompt)
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Copy prompt")
+                        .opacity(hoveredJobID == job.id ? 1 : 0)
+                    }
+                }
 
                 if job.status == .completed && !job.thumbnailPaths.isEmpty, let root = projectRoot {
                     FlowLayout(spacing: 6) {

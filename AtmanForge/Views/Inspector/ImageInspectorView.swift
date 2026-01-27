@@ -431,7 +431,16 @@ struct ImageInspectorView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
-                .disabled(appState.isRemovingBackground)
+                .disabled(appState.isRemovingBackground || job.model == .removeBackground)
+
+                Button {
+                    appState.loadSettings(from: job)
+                } label: {
+                    Label("Reuse Parameters", systemImage: "arrow.counterclockwise")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
 
                 #if os(macOS)
                 Button {

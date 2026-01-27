@@ -10,6 +10,34 @@ class ProjectManager {
     static let shared = ProjectManager()
 
     private let fileManager = FileManager.default
+    private var metaCache: [String: ImageMeta] = [:]
+
+    /// Returns cached ImageMeta for a generation file, reading from the companion .meta file on first access.
+    /// The key is the base timestamp (e.g. "20250127-143052") derived from filenames like "20250127-143052.png" or "20250127-143052-2.png".
+    func cachedMeta(forGenerationFile fileName: String, inFolder folder: URL) -> ImageMeta? {
+        let base = metaBaseName(from: fileName)
+        if let cached = metaCache[base] { return cached }
+
+        let metaURL = folder.appendingPathComponent("generations/\(base).meta")
+        guard let data = try? Data(contentsOf: metaURL) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let meta = try? decoder.decode(ImageMeta.self, from: data) else { return nil }
+        metaCache[base] = meta
+        return meta
+    }
+
+    /// Strips the image index suffix and extension to get the meta base name.
+    /// "20250127-143052.png" → "20250127-143052"
+    /// "20250127-143052-2.png" → "20250127-143052"
+    private func metaBaseName(from fileName: String) -> String {
+        let stem = (fileName as NSString).deletingPathExtension
+        // If it ends with -<digit(s)>, strip that suffix
+        if let range = stem.range(of: #"-\d+$"#, options: .regularExpression) {
+            return String(stem[stem.startIndex..<range.lowerBound])
+        }
+        return stem
+    }
     private let encoder: JSONEncoder = {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601

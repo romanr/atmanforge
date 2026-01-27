@@ -25,6 +25,7 @@ struct ContentView: View {
                 GenerationSidebar()
 
                 CenterPanelView()
+                    .frame(minWidth: 480)
 
                 if appState.selectedImageJob != nil {
                     ImageInspectorView()
