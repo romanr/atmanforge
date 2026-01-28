@@ -7,6 +7,7 @@ struct AIGenerationPanel: View {
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isDropTargeted = false
     @State private var promptDebounceTask: Task<Void, Never>?
+    @State private var sketchingReferenceIndex: Int?
 
     var body: some View {
         @Bindable var appState = appState
@@ -115,6 +116,15 @@ struct AIGenerationPanel: View {
                                         }
                                         .buttonStyle(.plain)
                                         .offset(x: 4, y: -4)
+                                    }
+                                    .contextMenu {
+                                        #if os(macOS)
+                                        Button {
+                                            sketchingReferenceIndex = index
+                                        } label: {
+                                            Label("Sketch", systemImage: "pencil.tip.crop.circle")
+                                        }
+                                        #endif
                                     }
                                 }
                             }
@@ -312,6 +322,26 @@ struct AIGenerationPanel: View {
                 }
             }
         }
+        #if os(macOS)
+        .sheet(isPresented: Binding(
+            get: { sketchingReferenceIndex != nil },
+            set: { if !$0 { sketchingReferenceIndex = nil } }
+        )) {
+            if let index = sketchingReferenceIndex,
+               appState.referenceImages.indices.contains(index) {
+                SketchEditorView(
+                    imageData: appState.referenceImages[index],
+                    onSave: { newData in
+                        appState.replaceReferenceImage(at: index, with: newData)
+                        sketchingReferenceIndex = nil
+                    },
+                    onCancel: {
+                        sketchingReferenceIndex = nil
+                    }
+                )
+            }
+        }
+        #endif
         .onChange(of: appState.prompt) {
             promptDebounceTask?.cancel()
             promptDebounceTask = Task {

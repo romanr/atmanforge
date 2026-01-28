@@ -235,6 +235,12 @@ class AppState {
         commitUndoCheckpoint()
     }
 
+    func replaceReferenceImage(at index: Int, with data: Data) {
+        guard referenceImages.indices.contains(index) else { return }
+        referenceImages[index] = data
+        commitUndoCheckpoint()
+    }
+
     /// Convert arbitrary image data to PNG for consistent API handling
     private static func normalizeImageData(_ data: Data) -> Data? {
         #if os(macOS)
