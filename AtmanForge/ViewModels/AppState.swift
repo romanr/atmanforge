@@ -356,7 +356,8 @@ class AppState {
         // Delete files from disk
         projectManager.deleteGenerationImages(fileNames: ids, from: root)
 
-        // Remove from jobs' savedImagePaths and thumbnailPaths
+        // Remove deleted paths from jobs, then remove jobs with no images left
+        var jobsToRemove: [UUID] = []
         for job in generationJobs {
             var indicesToRemove: [Int] = []
             for (index, path) in job.savedImagePaths.enumerated() {
@@ -365,18 +366,21 @@ class AppState {
                     indicesToRemove.append(index)
                 }
             }
-            // Remove in reverse order to maintain indices
             for index in indicesToRemove.reversed() {
                 job.savedImagePaths.remove(at: index)
                 if index < job.thumbnailPaths.count {
                     job.thumbnailPaths.remove(at: index)
                 }
             }
+            if job.savedImagePaths.isEmpty && job.status == .completed {
+                jobsToRemove.append(job.id)
+            }
         }
+        generationJobs.removeAll { jobsToRemove.contains($0.id) }
 
         // Clear selection for deleted items
         selectedLibraryImageIDs.subtract(ids)
-        if selectedLibraryImageIDs.isEmpty {
+        if selectedLibraryImageIDs.isEmpty || selectedImageJob.map({ jobsToRemove.contains($0.id) }) == true {
             selectedImageJob = nil
             selectedImageIndex = 0
         }
