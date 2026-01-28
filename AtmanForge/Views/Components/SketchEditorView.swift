@@ -10,7 +10,7 @@ struct SketchEditorView: View {
     @State private var strokes: [SketchStroke] = []
     @State private var currentStroke: SketchStroke?
     @State private var redoStack: [SketchStroke] = []
-    @State private var brushSize: CGFloat = 4.0
+    @State private var brushSize: CGFloat = 21.0
     @State private var brushColor: Color = .red
 
     var body: some View {
