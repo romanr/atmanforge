@@ -30,7 +30,7 @@ struct ContentView: View {
                 CenterPanelView()
                     .frame(minWidth: 480)
 
-                if appState.selectedImageJob != nil {
+                if appState.selectedImageJob != nil || appState.selectedLibraryImageIDs.count > 1 {
                     ImageInspectorView()
                 }
             }
@@ -68,6 +68,21 @@ struct ContentView: View {
         } message: {
             Text("Enter a name for the new canvas.")
         }
+        .alert("Remove Images?", isPresented: deleteConfirmationBinding) {
+            Button("Remove", role: .destructive) {
+                appState.confirmDeleteLibraryImages()
+            }
+            Button("Remove (Don't Ask Again)", role: .destructive) {
+                appState.projectPreferences.skipDeleteConfirmation = true
+                appState.saveProjectPreferences()
+                appState.confirmDeleteLibraryImages()
+            }
+            Button("Cancel", role: .cancel) {
+                appState.pendingDeleteIDs.removeAll()
+            }
+        } message: {
+            Text("This will permanently delete \(appState.pendingDeleteIDs.count) image\(appState.pendingDeleteIDs.count == 1 ? "" : "s") from disk.")
+        }
     }
 
     private var newProjectBinding: Binding<Bool> {
@@ -88,6 +103,13 @@ struct ContentView: View {
         Binding(
             get: { appState.newItemName },
             set: { appState.newItemName = $0 }
+        )
+    }
+
+    private var deleteConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { appState.showDeleteConfirmation },
+            set: { appState.showDeleteConfirmation = $0 }
         )
     }
 

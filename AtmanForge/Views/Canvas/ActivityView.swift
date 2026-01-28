@@ -250,7 +250,8 @@ struct ActivityView: View {
             thumbWidth = maxDim * CGFloat(w) / CGFloat(h)
         }
 
-        return ThumbnailHoverView(url: url, width: thumbWidth, height: thumbHeight, isSelected: isSelected, savedImageURL: savedImageURL, onTap: onTap)
+        let wrappedTap: (Bool, Bool) -> Void = { _, _ in onTap?() }
+        return ThumbnailHoverView(url: url, width: thumbWidth, height: thumbHeight, isSelected: isSelected, savedImageURL: savedImageURL, onTap: wrappedTap)
     }
 
     private func copyToClipboard(_ text: String) {
@@ -283,7 +284,10 @@ struct ThumbnailHoverView: View {
     let height: CGFloat
     var isSelected: Bool = false
     var savedImageURL: URL?
-    var onTap: (() -> Void)?
+    var onTap: ((_ commandDown: Bool, _ shiftDown: Bool) -> Void)?
+    var extraContextMenu: (() -> AnyView)?
+    /// URLs to add as references when multi-selected (nil = single-image default)
+    var multiSelectedImageURLs: [URL]?
 
     @State private var isHovered = false
 
@@ -309,6 +313,10 @@ struct ThumbnailHoverView: View {
         #endif
     }
 
+    private var isMultiSelected: Bool {
+        multiSelectedImageURLs != nil
+    }
+
     @ViewBuilder
     private var contextMenuItems: some View {
         if let fileURL = savedImageURL {
@@ -322,23 +330,41 @@ struct ThumbnailHoverView: View {
 
             Divider()
 
-            Button {
-                if let data = try? Data(contentsOf: fileURL) {
-                    appState.addReferenceImages([data])
+            if let urls = multiSelectedImageURLs {
+                Button {
+                    var allData: [Data] = []
+                    for u in urls {
+                        if let data = try? Data(contentsOf: u) {
+                            allData.append(data)
+                        }
+                    }
+                    appState.addReferenceImages(allData)
+                } label: {
+                    Label("Add \(urls.count) to Reference", systemImage: "photo.on.rectangle.angled")
                 }
-            } label: {
-                Label("Add to Reference", systemImage: "photo.on.rectangle.angled")
+            } else {
+                Button {
+                    if let data = try? Data(contentsOf: fileURL) {
+                        appState.addReferenceImages([data])
+                    }
+                } label: {
+                    Label("Add to Reference", systemImage: "photo.on.rectangle.angled")
+                }
+
+                Button {
+                    appState.prompt = ""
+                    appState.referenceImages.removeAll()
+                    if let data = try? Data(contentsOf: fileURL) {
+                        appState.addReferenceImages([data])
+                    }
+                    appState.commitUndoCheckpoint()
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
             }
 
-            Button {
-                appState.prompt = ""
-                appState.referenceImages.removeAll()
-                if let data = try? Data(contentsOf: fileURL) {
-                    appState.addReferenceImages([data])
-                }
-                appState.commitUndoCheckpoint()
-            } label: {
-                Label("Edit", systemImage: "pencil")
+            if let extra = extraContextMenu {
+                extra()
             }
         }
     }
@@ -361,10 +387,10 @@ struct ThumbnailHoverView: View {
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .overlay(
                 RoundedRectangle(cornerRadius: 4)
-                    .stroke(Color.accentColor, lineWidth: 2)
+                    .stroke(Color.accentColor, lineWidth: 3)
                     .opacity(isSelected ? 1 : 0)
             )
-            .onTapGesture { onTap?() }
+            .onTapGesture { onTap?(false, false) }
         #endif
     }
 }
@@ -375,7 +401,7 @@ struct NativeHoverZoomView: NSViewRepresentable {
     let width: CGFloat
     let height: CGFloat
     var isSelected: Bool
-    var onTap: (() -> Void)?
+    var onTap: ((_ commandDown: Bool, _ shiftDown: Bool) -> Void)?
 
     func makeNSView(context: Context) -> HoverZoomNSView {
         let view = HoverZoomNSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
@@ -396,7 +422,7 @@ class HoverZoomNSView: NSView {
         didSet { imageLayer.contents = image }
     }
     var cornerRadius: CGFloat = 4
-    var onTap: (() -> Void)?
+    var onTap: ((_ commandDown: Bool, _ shiftDown: Bool) -> Void)?
 
     private let imageLayer = CALayer()
     private let borderLayer = CAShapeLayer()
@@ -415,7 +441,7 @@ class HoverZoomNSView: NSView {
 
         borderLayer.fillColor = nil
         borderLayer.strokeColor = NSColor.controlAccentColor.cgColor
-        borderLayer.lineWidth = 2
+        borderLayer.lineWidth = 3
         borderLayer.opacity = 0
         layer?.addSublayer(borderLayer)
     }
@@ -468,7 +494,9 @@ class HoverZoomNSView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        onTap?()
+        let cmd = event.modifierFlags.contains(.command)
+        let shift = event.modifierFlags.contains(.shift)
+        onTap?(cmd, shift)
     }
 }
 #endif

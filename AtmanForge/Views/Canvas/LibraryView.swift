@@ -338,32 +338,45 @@ struct LibraryView: View {
         }
     }
 
+    // MARK: - Selection Handling
+
+    private func handleTap(entry: LibraryImageEntry, commandDown: Bool, shiftDown: Bool, entries: [LibraryImageEntry]) {
+        if commandDown {
+            appState.toggleLibraryImageSelection(entry.id, entry: entry)
+        } else if shiftDown {
+            appState.selectLibraryImageRange(to: entry.id, entries: entries)
+        } else {
+            appState.selectLibraryImage(entry.id, entry: entry)
+        }
+    }
+
+    private func isEntrySelected(_ entry: LibraryImageEntry) -> Bool {
+        appState.selectedLibraryImageIDs.contains(entry.id)
+    }
+
     // MARK: - Grid View
 
     private var imageGrid: some View {
-        ScrollView {
+        let entries = allEntries
+        return ScrollView {
             LazyVGrid(
                 columns: [GridItem(.adaptive(minimum: thumbnailMaxSize), spacing: 8)],
                 spacing: 8
             ) {
-                ForEach(allEntries) { entry in
+                ForEach(entries) { entry in
                     if let root = projectRoot {
                         let savedURL = root.appendingPathComponent(entry.imagePath)
-                        let isSelected = appState.selectedImageJob?.id == entry.job?.id
-                            && appState.selectedImageIndex == entry.imageIndex
-
+                        let isSelected = isEntrySelected(entry)
                         let aspectRatio = entry.meta?.aspectRatio ?? entry.job?.aspectRatio ?? .r1_1
 
                         gridThumbnail(
+                            entry: entry,
                             url: root.appendingPathComponent(entry.thumbPath),
                             aspectRatio: aspectRatio,
                             isSelected: isSelected,
-                            savedImageURL: savedURL
-                        ) {
-                            if let job = entry.job {
-                                appState.selectImage(job: job, index: entry.imageIndex)
-                            }
-                        }
+                            savedImageURL: savedURL,
+                            entries: entries
+                        )
                     }
                 }
             }
@@ -371,7 +384,7 @@ struct LibraryView: View {
         }
     }
 
-    private func gridThumbnail(url: URL, aspectRatio: AspectRatio, isSelected: Bool, savedImageURL: URL?, onTap: @escaping () -> Void) -> some View {
+    private func gridThumbnail(entry: LibraryImageEntry, url: URL, aspectRatio: AspectRatio, isSelected: Bool, savedImageURL: URL?, entries: [LibraryImageEntry]) -> some View {
         let maxDim = thumbnailMaxSize
         let (w, h) = aspectRatio.ratio
         let thumbWidth: CGFloat
@@ -384,103 +397,144 @@ struct LibraryView: View {
             thumbWidth = maxDim * CGFloat(w) / CGFloat(h)
         }
 
+        let selectedCount = appState.selectedLibraryImageIDs.count
+        let isMulti = selectedCount > 1 && appState.selectedLibraryImageIDs.contains(entry.id)
+
+        // Build list of selected image URLs for multi-select "Add to Reference"
+        let multiURLs: [URL]?
+        if isMulti, let root = projectRoot {
+            multiURLs = appState.selectedLibraryImageIDs.map { fileName in
+                root.appendingPathComponent("generations/\(fileName)")
+            }
+        } else {
+            multiURLs = nil
+        }
+
         return ThumbnailHoverView(
             url: url,
             width: thumbWidth,
             height: thumbHeight,
             isSelected: isSelected,
             savedImageURL: savedImageURL,
-            onTap: onTap
+            onTap: { cmd, shift in
+                handleTap(entry: entry, commandDown: cmd, shiftDown: shift, entries: entries)
+            },
+            extraContextMenu: {
+                AnyView(gridContextMenuExtra(entry: entry, selectedCount: selectedCount))
+            },
+            multiSelectedImageURLs: multiURLs
         )
+    }
+
+    @ViewBuilder
+    private func gridContextMenuExtra(entry: LibraryImageEntry, selectedCount: Int) -> some View {
+        Divider()
+        if selectedCount > 1 && appState.selectedLibraryImageIDs.contains(entry.id) {
+            Button(role: .destructive) {
+                appState.requestDeleteLibraryImages(appState.selectedLibraryImageIDs)
+            } label: {
+                Label("Remove \(selectedCount) Images", systemImage: "trash")
+            }
+        } else {
+            Button(role: .destructive) {
+                appState.requestDeleteLibraryImages([entry.id])
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+        }
     }
 
     // MARK: - List View
 
     private var imageList: some View {
-        ScrollView {
+        let entries = allEntries
+        return ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(allEntries) { entry in
+                ForEach(entries) { entry in
                     if let root = projectRoot {
                         let savedURL = root.appendingPathComponent(entry.imagePath)
-                        let isSelected = appState.selectedImageJob?.id == entry.job?.id
-                            && appState.selectedImageIndex == entry.imageIndex
+                        let isSelected = isEntrySelected(entry)
 
-                        listRow(entry: entry, root: root, isSelected: isSelected, savedImageURL: savedURL)
+                        listRow(entry: entry, root: root, isSelected: isSelected, savedImageURL: savedURL, entries: entries)
                     }
                 }
             }
         }
     }
 
-    private func listRow(entry: LibraryImageEntry, root: URL, isSelected: Bool, savedImageURL: URL?) -> some View {
+    private func listRow(entry: LibraryImageEntry, root: URL, isSelected: Bool, savedImageURL: URL?, entries: [LibraryImageEntry]) -> some View {
         let thumbURL = root.appendingPathComponent(entry.thumbPath)
 
-        return Button {
-            if let job = entry.job {
-                appState.selectImage(job: job, index: entry.imageIndex)
-            }
-        } label: {
-            HStack(spacing: 0) {
-                listThumbnail(url: thumbURL)
-                    .padding(.trailing, 10)
+        return HStack(spacing: 0) {
+            listThumbnail(url: thumbURL)
+                .padding(.trailing, 10)
 
-                Text(entry.fileName)
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(minWidth: 80)
+            Text(entry.fileName)
+                .font(.caption2)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minWidth: 80)
 
-                Text(entry.prompt)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(minWidth: 100)
+            Text(entry.prompt)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minWidth: 100)
 
-                Text(entry.model.displayName)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(minWidth: 70)
+            Text(entry.model.displayName)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minWidth: 70)
 
-                Text(entry.resolutionString)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(minWidth: 70)
+            Text(entry.resolutionString)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minWidth: 70)
 
-                Text(entry.fileSizeString)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(minWidth: 56)
+            Text(entry.fileSizeString)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minWidth: 56)
 
-                Text(dateLabel(for: entry.createdAt))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(minWidth: 70)
+            Text(dateLabel(for: entry.createdAt))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minWidth: 70)
 
-                // Spacer matching view mode toggle width
-                Color.clear.frame(width: 54, height: 1)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
-            )
-            .contentShape(Rectangle())
+            // Spacer matching view mode toggle width
+            Color.clear.frame(width: 54, height: 1)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            #if os(macOS)
+            let flags = NSEvent.modifierFlags
+            let cmd = flags.contains(.command)
+            let shift = flags.contains(.shift)
+            #else
+            let cmd = false
+            let shift = false
+            #endif
+            handleTap(entry: entry, commandDown: cmd, shiftDown: shift, entries: entries)
+        }
         .contextMenu {
-            listContextMenu(savedImageURL: savedImageURL)
+            listContextMenu(entry: entry, savedImageURL: savedImageURL)
         }
     }
 
@@ -523,8 +577,11 @@ struct LibraryView: View {
     }
 
     @ViewBuilder
-    private func listContextMenu(savedImageURL: URL?) -> some View {
+    private func listContextMenu(entry: LibraryImageEntry, savedImageURL: URL?) -> some View {
         if let fileURL = savedImageURL {
+            let selectedCount = appState.selectedLibraryImageIDs.count
+            let isMulti = selectedCount > 1 && appState.selectedLibraryImageIDs.contains(entry.id)
+
             Button {
                 #if os(macOS)
                 NSWorkspace.shared.activateFileViewerSelecting([fileURL])
@@ -535,23 +592,54 @@ struct LibraryView: View {
 
             Divider()
 
-            Button {
-                if let data = try? Data(contentsOf: fileURL) {
-                    appState.addReferenceImages([data])
+            if isMulti, let root = projectRoot {
+                Button {
+                    var allData: [Data] = []
+                    for fileName in appState.selectedLibraryImageIDs {
+                        let url = root.appendingPathComponent("generations/\(fileName)")
+                        if let data = try? Data(contentsOf: url) {
+                            allData.append(data)
+                        }
+                    }
+                    appState.addReferenceImages(allData)
+                } label: {
+                    Label("Add \(selectedCount) to Reference", systemImage: "photo.on.rectangle.angled")
                 }
-            } label: {
-                Label("Add to Reference", systemImage: "photo.on.rectangle.angled")
+            } else {
+                Button {
+                    if let data = try? Data(contentsOf: fileURL) {
+                        appState.addReferenceImages([data])
+                    }
+                } label: {
+                    Label("Add to Reference", systemImage: "photo.on.rectangle.angled")
+                }
+
+                Button {
+                    appState.prompt = ""
+                    appState.referenceImages.removeAll()
+                    if let data = try? Data(contentsOf: fileURL) {
+                        appState.addReferenceImages([data])
+                    }
+                    appState.commitUndoCheckpoint()
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
             }
 
-            Button {
-                appState.prompt = ""
-                appState.referenceImages.removeAll()
-                if let data = try? Data(contentsOf: fileURL) {
-                    appState.addReferenceImages([data])
+            Divider()
+
+            if isMulti {
+                Button(role: .destructive) {
+                    appState.requestDeleteLibraryImages(appState.selectedLibraryImageIDs)
+                } label: {
+                    Label("Remove \(selectedCount) Images", systemImage: "trash")
                 }
-                appState.commitUndoCheckpoint()
-            } label: {
-                Label("Edit", systemImage: "pencil")
+            } else {
+                Button(role: .destructive) {
+                    appState.requestDeleteLibraryImages([entry.id])
+                } label: {
+                    Label("Remove", systemImage: "trash")
+                }
             }
         }
     }

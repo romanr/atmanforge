@@ -67,6 +67,12 @@ class AppState {
     var isRemovingBackground = false
     var toasts: [AppToast] = []
 
+    // MARK: - Library Multi-Selection
+    var selectedLibraryImageIDs: Set<String> = []
+    var showDeleteConfirmation = false
+    var pendingDeleteIDs: Set<String> = []
+    var projectPreferences = ProjectPreferences()
+
     // MARK: - AI Generation
     var prompt = ""
     var selectedModel: AIModel = .gemini25
@@ -258,6 +264,128 @@ class AppState {
     func clearImageSelection() {
         selectedImageJob = nil
         selectedImageIndex = 0
+        selectedLibraryImageIDs.removeAll()
+    }
+
+    // MARK: - Library Multi-Selection
+
+    /// Single click: clear set, select one, update inspector
+    func selectLibraryImage(_ id: String, entry: LibraryImageEntry) {
+        selectedLibraryImageIDs = [id]
+        if let job = entry.job {
+            selectedImageJob = job
+            selectedImageIndex = entry.imageIndex
+        } else {
+            selectedImageJob = nil
+            selectedImageIndex = 0
+        }
+    }
+
+    /// Cmd+click: toggle item in selection set
+    func toggleLibraryImageSelection(_ id: String, entry: LibraryImageEntry) {
+        if selectedLibraryImageIDs.contains(id) {
+            selectedLibraryImageIDs.remove(id)
+        } else {
+            selectedLibraryImageIDs.insert(id)
+        }
+        // If exactly one remains, sync inspector
+        if selectedLibraryImageIDs.count == 1, let remaining = selectedLibraryImageIDs.first {
+            // The caller should provide the entry for the remaining item if possible,
+            // but for now we keep current inspector state or clear if the deselected was the inspected one
+            if id == remaining {
+                // We just added this one
+                if let job = entry.job {
+                    selectedImageJob = job
+                    selectedImageIndex = entry.imageIndex
+                }
+            }
+        }
+        if selectedLibraryImageIDs.isEmpty {
+            selectedImageJob = nil
+            selectedImageIndex = 0
+        }
+    }
+
+    /// Shift+click: select range from last selected to target
+    func selectLibraryImageRange(to id: String, entries: [LibraryImageEntry]) {
+        guard let targetIndex = entries.firstIndex(where: { $0.id == id }) else { return }
+
+        // Find the anchor: the first entry in the current ordered list that's already selected
+        var anchorIndex = targetIndex
+        for (i, entry) in entries.enumerated() {
+            if selectedLibraryImageIDs.contains(entry.id) {
+                anchorIndex = i
+                break
+            }
+        }
+
+        let rangeStart = min(anchorIndex, targetIndex)
+        let rangeEnd = max(anchorIndex, targetIndex)
+
+        for i in rangeStart...rangeEnd {
+            selectedLibraryImageIDs.insert(entries[i].id)
+        }
+
+        // If only one selected, sync inspector
+        if selectedLibraryImageIDs.count == 1, let entry = entries.first(where: { selectedLibraryImageIDs.contains($0.id) }) {
+            if let job = entry.job {
+                selectedImageJob = job
+                selectedImageIndex = entry.imageIndex
+            }
+        }
+    }
+
+    /// Request deletion: check preferences, show confirmation or delete immediately
+    func requestDeleteLibraryImages(_ ids: Set<String>) {
+        guard !ids.isEmpty else { return }
+        if projectPreferences.skipDeleteConfirmation {
+            pendingDeleteIDs = ids
+            confirmDeleteLibraryImages()
+        } else {
+            pendingDeleteIDs = ids
+            showDeleteConfirmation = true
+        }
+    }
+
+    /// Execute deletion of pending images
+    func confirmDeleteLibraryImages() {
+        guard let root = projectManager.projectsRootURL, !pendingDeleteIDs.isEmpty else { return }
+        let ids = pendingDeleteIDs
+        pendingDeleteIDs.removeAll()
+
+        // Delete files from disk
+        projectManager.deleteGenerationImages(fileNames: ids, from: root)
+
+        // Remove from jobs' savedImagePaths and thumbnailPaths
+        for job in generationJobs {
+            var indicesToRemove: [Int] = []
+            for (index, path) in job.savedImagePaths.enumerated() {
+                let fileName = (path as NSString).lastPathComponent
+                if ids.contains(fileName) {
+                    indicesToRemove.append(index)
+                }
+            }
+            // Remove in reverse order to maintain indices
+            for index in indicesToRemove.reversed() {
+                job.savedImagePaths.remove(at: index)
+                if index < job.thumbnailPaths.count {
+                    job.thumbnailPaths.remove(at: index)
+                }
+            }
+        }
+
+        // Clear selection for deleted items
+        selectedLibraryImageIDs.subtract(ids)
+        if selectedLibraryImageIDs.isEmpty {
+            selectedImageJob = nil
+            selectedImageIndex = 0
+        }
+
+        // Persist and update
+        saveActivity()
+        imageVersion += 1
+        let count = ids.count
+        showToast("\(count) image\(count == 1 ? "" : "s") removed", icon: "trash", style: .info)
     }
 
     // MARK: - Toasts
@@ -316,7 +444,18 @@ class AppState {
             statusMessage = "Failed to load projects: \(error.localizedDescription)"
         }
         loadActivity()
+        loadProjectPreferences()
         updateProjectSize()
+    }
+
+    func loadProjectPreferences() {
+        guard let root = projectManager.projectsRootURL else { return }
+        projectPreferences = projectManager.loadPreferences(from: root)
+    }
+
+    func saveProjectPreferences() {
+        guard let root = projectManager.projectsRootURL else { return }
+        projectManager.savePreferences(projectPreferences, to: root)
     }
 
     func createProject(name: String) {

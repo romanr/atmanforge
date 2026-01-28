@@ -29,8 +29,14 @@ struct ImageInspectorView: View {
         appState.projectManager.projectsRootURL
     }
 
+    private var isMultiSelection: Bool {
+        appState.selectedLibraryImageIDs.count > 1
+    }
+
     var body: some View {
-        if let job = job {
+        if isMultiSelection {
+            multiSelectionView
+        } else if let job = job {
             VStack(spacing: 0) {
                 header
                 Divider()
@@ -58,6 +64,83 @@ struct ImageInspectorView: View {
                 selectedReferenceIndex = 0
                 comparisonPosition = 0.0
             }
+        }
+    }
+
+    // MARK: - Multi-Selection View
+
+    private var multiSelectionView: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    multiSelectionSummary
+                    multiSelectionActions
+                }
+                .padding(16)
+            }
+        }
+        .frame(minWidth: 280, idealWidth: 320, maxWidth: 400)
+        #if os(macOS)
+        .background(Color(nsColor: .windowBackgroundColor))
+        #else
+        .background(Color(uiColor: .systemBackground))
+        #endif
+    }
+
+    private var multiSelectionSummary: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                Text("\(appState.selectedLibraryImageIDs.count) Images Selected")
+                    .font(.headline)
+            }
+
+            if let root = projectRoot {
+                let totalSize = computeTotalFileSize(root: root)
+                if totalSize > 0 {
+                    metadataRow("Total Size", value: formatBytes(totalSize))
+                }
+            }
+        }
+    }
+
+    private func computeTotalFileSize(root: URL) -> UInt64 {
+        let fm = FileManager.default
+        var total: UInt64 = 0
+        for fileName in appState.selectedLibraryImageIDs {
+            let fileURL = root.appendingPathComponent("generations/\(fileName)")
+            if let attrs = try? fm.attributesOfItem(atPath: fileURL.path),
+               let size = attrs[.size] as? UInt64 {
+                total += size
+            }
+        }
+        return total
+    }
+
+    private func formatBytes(_ bytes: UInt64) -> String {
+        let mb = Double(bytes) / (1024 * 1024)
+        if mb >= 1.0 {
+            return String(format: "%.1f MB", mb)
+        }
+        let kb = Double(bytes) / 1024
+        return String(format: "%.0f KB", kb)
+    }
+
+    private var multiSelectionActions: some View {
+        VStack(spacing: 8) {
+            Divider()
+            Button(role: .destructive) {
+                appState.requestDeleteLibraryImages(appState.selectedLibraryImageIDs)
+            } label: {
+                Label("Remove Selected", systemImage: "trash")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
         }
     }
 

@@ -416,6 +416,67 @@ class ProjectManager {
         try? data.write(to: activityURL)
     }
 
+    // MARK: - Project Preferences
+
+    func loadPreferences(from folder: URL) -> ProjectPreferences {
+        let url = folder.appendingPathComponent(".preferences.json")
+        guard let data = try? Data(contentsOf: url),
+              let prefs = try? decoder.decode(ProjectPreferences.self, from: data) else {
+            return ProjectPreferences()
+        }
+        return prefs
+    }
+
+    func savePreferences(_ prefs: ProjectPreferences, to folder: URL) {
+        let url = folder.appendingPathComponent(".preferences.json")
+        guard let data = try? encoder.encode(prefs) else { return }
+        try? data.write(to: url)
+    }
+
+    // MARK: - Delete Generation Images
+
+    /// Deletes image files, their thumbnails, and orphaned .meta files for the given filenames.
+    func deleteGenerationImages(fileNames: Set<String>, from folder: URL) {
+        let generationsDir = folder.appendingPathComponent("generations")
+        let thumbnailsDir = folder.appendingPathComponent(".thumbnails")
+
+        // Group filenames by meta base name to determine orphaned .meta files
+        var baseNameToFiles: [String: [String]] = [:]
+        for fileName in fileNames {
+            let base = metaBaseName(from: fileName)
+            baseNameToFiles[base, default: []].append(fileName)
+        }
+
+        // Delete each image and its thumbnail
+        for fileName in fileNames {
+            let imageURL = generationsDir.appendingPathComponent(fileName)
+            let thumbURL = thumbnailsDir.appendingPathComponent(fileName)
+            try? fileManager.removeItem(at: imageURL)
+            try? fileManager.removeItem(at: thumbURL)
+        }
+
+        // Check if .meta files are now orphaned (no sibling images remain)
+        for (baseName, _) in baseNameToFiles {
+            let metaURL = generationsDir.appendingPathComponent("\(baseName).meta")
+            guard fileManager.fileExists(atPath: metaURL.path) else { continue }
+
+            // Check if any sibling images with the same base name still exist
+            let siblingExists: Bool
+            if let allFiles = try? fileManager.contentsOfDirectory(atPath: generationsDir.path) {
+                siblingExists = allFiles.contains { file in
+                    file.hasSuffix(".png") && metaBaseName(from: file) == baseName
+                }
+            } else {
+                siblingExists = false
+            }
+
+            if !siblingExists {
+                try? fileManager.removeItem(at: metaURL)
+                metaCache.removeValue(forKey: baseName)
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private func sha256Hex(_ data: Data) -> String {
@@ -439,6 +500,12 @@ class ProjectManager {
         }
         return candidate
     }
+}
+
+// MARK: - Project Preferences
+
+struct ProjectPreferences: Codable {
+    var skipDeleteConfirmation: Bool = false
 }
 
 enum ProjectError: LocalizedError {
