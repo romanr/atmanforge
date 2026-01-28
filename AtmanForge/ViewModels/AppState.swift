@@ -65,6 +65,7 @@ class AppState {
     var selectedImageJob: GenerationJob?
     var selectedImageIndex: Int = 0
     var isRemovingBackground = false
+    var toasts: [AppToast] = []
 
     // MARK: - AI Generation
     var prompt = ""
@@ -257,6 +258,17 @@ class AppState {
     func clearImageSelection() {
         selectedImageJob = nil
         selectedImageIndex = 0
+    }
+
+    // MARK: - Toasts
+
+    func showToast(_ message: String, icon: String = "checkmark", style: AppToast.ToastStyle = .info) {
+        let toast = AppToast(message: message, icon: icon, style: style)
+        withAnimation { toasts.append(toast) }
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            withAnimation { toasts.removeAll { $0.id == toast.id } }
+        }
     }
 
     // MARK: - Reuse Settings
@@ -484,6 +496,7 @@ class AppState {
                 job.status = .completed
                 imageVersion += 1
                 statusMessage = "Saved \(saved.imagePaths.count) image\(saved.imagePaths.count == 1 ? "" : "s")"
+                showToast("Image generated", icon: "checkmark.circle", style: .success)
                 saveActivity()
             } catch {
                 if job.status != .cancelled {
@@ -492,6 +505,7 @@ class AppState {
                     job.errorMessage = error.localizedDescription
                     errorMessage = error.localizedDescription
                     statusMessage = "Generation failed."
+                    showToast("Generation failed", icon: "xmark.circle", style: .error)
                 }
                 saveActivity()
             }
@@ -585,6 +599,7 @@ class AppState {
                 imageVersion += 1
                 statusMessage = "Background removed"
                 isRemovingBackground = false
+                showToast("Background removed", icon: "checkmark.circle", style: .success)
                 saveActivity()
             } catch {
                 bgJob.completedAt = Date()
@@ -593,6 +608,7 @@ class AppState {
                 errorMessage = error.localizedDescription
                 statusMessage = "Background removal failed."
                 isRemovingBackground = false
+                showToast("Background removal failed", icon: "xmark.circle", style: .error)
                 saveActivity()
             }
         }

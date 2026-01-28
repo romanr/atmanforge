@@ -51,7 +51,10 @@ class ReplicateProvider: AIProvider {
         let prediction = try JSONDecoder().decode(PredictionResponse.self, from: data)
 
         guard prediction.status == "succeeded" else {
-            let errorMsg = prediction.error ?? "Background removal failed with status: \(prediction.status)"
+            let raw = prediction.error
+            let errorMsg = (raw == nil || raw!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                ? "No reason given"
+                : raw!
             throw ReplicateError.generationFailed(errorMsg)
         }
 
@@ -215,7 +218,10 @@ class ReplicateProvider: AIProvider {
             case "succeeded":
                 return current
             case "failed", "canceled":
-                let errorMsg = current.error ?? "Prediction failed with status: \(current.status)"
+                let raw = current.error
+                let errorMsg = (raw == nil || raw!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    ? "No reason given"
+                    : raw!
                 throw ReplicateError.generationFailed(errorMsg)
             default:
                 continue

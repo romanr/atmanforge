@@ -140,6 +140,7 @@ struct ActivityView: View {
                     if !job.prompt.isEmpty {
                         Button {
                             copyToClipboard(job.prompt)
+                            appState.showToast("Prompt copied", icon: "doc.on.doc")
                         } label: {
                             Image(systemName: "doc.on.doc")
                                 .font(.caption2)

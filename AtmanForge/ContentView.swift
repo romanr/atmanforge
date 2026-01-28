@@ -11,6 +11,9 @@ struct ContentView: View {
                 WelcomeView()
             }
         }
+        .overlay(alignment: .top) {
+            ToastOverlay()
+        }
         .navigationTitle(appState.projectName)
     }
 

@@ -370,6 +370,7 @@ struct ImageInspectorView: View {
                         #else
                         UIPasteboard.general.string = job.prompt
                         #endif
+                        appState.showToast("Prompt copied", icon: "doc.on.doc")
                     } label: {
                         Image(systemName: "doc.on.doc")
                             .font(.caption)
