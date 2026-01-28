@@ -24,13 +24,16 @@ struct ContentView: View {
 
             Divider()
 
-            HSplitView {
+            HStack(spacing: 0) {
                 GenerationSidebar()
+
+                Divider()
 
                 CenterPanelView()
                     .frame(minWidth: 480)
 
                 if appState.selectedImageJob != nil || appState.selectedLibraryImageIDs.count > 1 {
+                    Divider()
                     ImageInspectorView()
                 }
             }

@@ -50,7 +50,7 @@ struct ImageInspectorView: View {
                     .padding(16)
                 }
             }
-            .frame(minWidth: 280, idealWidth: 320, maxWidth: 400)
+            .frame(width: 320)
             #if os(macOS)
             .background(Color(nsColor: .windowBackgroundColor))
             #else
@@ -81,7 +81,7 @@ struct ImageInspectorView: View {
                 .padding(16)
             }
         }
-        .frame(minWidth: 280, idealWidth: 320, maxWidth: 400)
+        .frame(width: 320)
         #if os(macOS)
         .background(Color(nsColor: .windowBackgroundColor))
         #else
@@ -254,16 +254,12 @@ struct ImageInspectorView: View {
             // Circle handle
             Circle()
                 .fill(Color.white)
-                .frame(width: 28, height: 28)
+                .frame(width: 32, height: 32)
                 .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 0)
                 .overlay {
-                    HStack(spacing: 2) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 8, weight: .bold))
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 8, weight: .bold))
-                    }
-                    .foregroundStyle(.secondary)
+                    Image(systemName: "arrow.left.and.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
                 }
         }
         .position(x: dividerX, y: height / 2)

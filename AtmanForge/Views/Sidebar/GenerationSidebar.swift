@@ -12,6 +12,6 @@ struct GenerationSidebar: View {
             }
             .padding()
         }
-        .frame(minWidth: 250, idealWidth: 280, maxWidth: 320)
+        .frame(width: 280)
     }
 }

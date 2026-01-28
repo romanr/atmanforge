@@ -73,7 +73,7 @@ struct AIGenerationPanel: View {
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(isDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
                         )
-                        .frame(minHeight: appState.referenceImages.isEmpty ? 100 : 80)
+                        .frame(minHeight: appState.referenceImages.isEmpty ? 100 : nil)
 
                     if appState.referenceImages.isEmpty {
                         VStack(spacing: 6) {
@@ -85,51 +85,47 @@ struct AIGenerationPanel: View {
                                 .foregroundStyle(.tertiary)
                         }
                     } else {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(Array(appState.referenceImages.enumerated()), id: \.offset) { index, imageData in
-                                    ZStack(alignment: .topTrailing) {
-                                        #if os(macOS)
-                                        if let nsImage = NSImage(data: imageData) {
-                                            Image(nsImage: nsImage)
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 64, height: 64)
-                                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                        }
-                                        #else
-                                        if let uiImage = UIImage(data: imageData) {
-                                            Image(uiImage: uiImage)
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 64, height: 64)
-                                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                        }
-                                        #endif
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                            ForEach(Array(appState.referenceImages.enumerated()), id: \.offset) { index, imageData in
+                                ZStack(alignment: .topTrailing) {
+                                    #if os(macOS)
+                                    if let nsImage = NSImage(data: imageData) {
+                                        Image(nsImage: nsImage)
+                                            .resizable()
+                                            .aspectRatio(1, contentMode: .fill)
+                                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    }
+                                    #else
+                                    if let uiImage = UIImage(data: imageData) {
+                                        Image(uiImage: uiImage)
+                                            .resizable()
+                                            .aspectRatio(1, contentMode: .fill)
+                                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    }
+                                    #endif
 
-                                        Button {
-                                            appState.removeReferenceImage(at: index)
-                                        } label: {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .font(.system(size: 14))
-                                                .foregroundStyle(.white, .black.opacity(0.6))
-                                        }
-                                        .buttonStyle(.plain)
-                                        .offset(x: 4, y: -4)
+                                    Button {
+                                        appState.removeReferenceImage(at: index)
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 14))
+                                            .foregroundStyle(.white, .black.opacity(0.6))
                                     }
-                                    .contextMenu {
-                                        #if os(macOS)
-                                        Button {
-                                            sketchingReferenceIndex = index
-                                        } label: {
-                                            Label("Sketch", systemImage: "pencil.tip.crop.circle")
-                                        }
-                                        #endif
+                                    .buttonStyle(.plain)
+                                    .offset(x: 4, y: -4)
+                                }
+                                .contextMenu {
+                                    #if os(macOS)
+                                    Button {
+                                        sketchingReferenceIndex = index
+                                    } label: {
+                                        Label("Sketch", systemImage: "pencil.tip.crop.circle")
                                     }
+                                    #endif
                                 }
                             }
-                            .padding(8)
                         }
+                        .padding(8)
                     }
                 }
                 .onDrop(of: [.image, .fileURL], isTargeted: $isDropTargeted) { providers in
