@@ -73,6 +73,12 @@ class AppState {
     var pendingDeleteIDs: Set<String> = []
     var projectPreferences = ProjectPreferences()
 
+    // MARK: - App Settings
+    var parallelRequestDelay: TimeInterval {
+        get { UserDefaults.standard.object(forKey: "parallelRequestDelay") as? TimeInterval ?? 5.0 }
+        set { UserDefaults.standard.set(newValue, forKey: "parallelRequestDelay") }
+    }
+
     // MARK: - AI Generation
     var prompt = ""
     var selectedModel: AIModel = .gemini25
@@ -598,7 +604,7 @@ class AppState {
 
         Task {
             do {
-                let result = try await provider.generateImage(request: request) { [weak self] cancelURL in
+                let result = try await provider.generateImage(request: request, parallelDelay: parallelRequestDelay) { [weak self] cancelURL in
                     Task { @MainActor in
                         guard let self else { return }
                         if job.startedAt == nil {

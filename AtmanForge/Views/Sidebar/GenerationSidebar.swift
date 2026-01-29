@@ -4,14 +4,12 @@ struct GenerationSidebar: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                AIGenerationPanel()
+        VStack(alignment: .leading, spacing: 20) {
+            AIGenerationPanel()
 
-                Spacer()
-            }
-            .padding()
+            Spacer()
         }
+        .padding()
         .frame(width: 280)
     }
 }

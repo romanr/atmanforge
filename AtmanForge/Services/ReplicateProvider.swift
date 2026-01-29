@@ -11,7 +11,7 @@ class ReplicateProvider: AIProvider {
         self.apiKey = apiKey
     }
 
-    func generateImage(request: GenerationRequest, onPredictionCreated: @Sendable @escaping (String) -> Void) async throws -> GenerationResult {
+    func generateImage(request: GenerationRequest, parallelDelay: TimeInterval = 5.0, onPredictionCreated: @Sendable @escaping (String) -> Void) async throws -> GenerationResult {
         let input = try await buildInput(for: request)
 
         if request.model.supportsNativeImageCount || request.imageCount <= 1 {
@@ -24,22 +24,33 @@ class ReplicateProvider: AIProvider {
             let allImageData = try await downloadImages(from: finalPrediction)
             return GenerationResult(imageDataArray: allImageData)
         } else {
-            return try await withThrowingTaskGroup(of: [Data].self) { group in
-                for _ in 0..<request.imageCount {
+            // Create predictions sequentially with throttle delay, then poll in parallel
+            var predictions: [PredictionResponse] = []
+            for i in 0..<request.imageCount {
+                if i > 0 && parallelDelay > 0 {
+                    try await Task.sleep(nanoseconds: UInt64(parallelDelay * 1_000_000_000))
+                }
+                let prediction = try await createPrediction(
+                    model: request.model.replicateModelID,
+                    input: input
+                )
+                onPredictionCreated(prediction.urls.cancel)
+                predictions.append(prediction)
+            }
+
+            return try await withThrowingTaskGroup(of: (Int, [Data]).self) { group in
+                for (index, prediction) in predictions.enumerated() {
                     group.addTask {
-                        let prediction = try await self.createPrediction(
-                            model: request.model.replicateModelID,
-                            input: input
-                        )
-                        onPredictionCreated(prediction.urls.cancel)
                         let finalPrediction = try await self.pollPrediction(prediction)
-                        return try await self.downloadImages(from: finalPrediction)
+                        let images = try await self.downloadImages(from: finalPrediction)
+                        return (index, images)
                     }
                 }
-                var allImageData: [Data] = []
-                for try await images in group {
-                    allImageData.append(contentsOf: images)
+                var results: [(Int, [Data])] = []
+                for try await result in group {
+                    results.append(result)
                 }
+                let allImageData = results.sorted { $0.0 < $1.0 }.flatMap { $0.1 }
                 return GenerationResult(imageDataArray: allImageData)
             }
         }

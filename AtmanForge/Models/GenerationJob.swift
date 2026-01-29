@@ -108,7 +108,7 @@ class GenerationJob: Identifiable {
         case .pending: return "Queued"
         case .running: return "Generating..."
         case .completed: return "Completed"
-        case .failed: return errorMessage ?? "Failed"
+        case .failed: return "Failed"
         case .cancelled: return "Cancelled"
         }
     }

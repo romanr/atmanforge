@@ -29,6 +29,25 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Generation") {
+                HStack {
+                    Text("Parallel request delay")
+                    Spacer()
+                    Text("\(Int(appState.parallelRequestDelay))s")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .frame(width: 30, alignment: .trailing)
+                    Stepper("", value: Binding(
+                        get: { appState.parallelRequestDelay },
+                        set: { appState.parallelRequestDelay = $0 }
+                    ), in: 0...30, step: 1)
+                    .labelsHidden()
+                }
+                Text("Delay between API calls when generating multiple images with models that don't support batch requests (Gemini).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Projects Folder") {
                 HStack {
                     Text(rootFolderPath.isEmpty ? "Not set" : rootFolderPath)
