@@ -136,7 +136,8 @@ struct ActivityView: View {
                     Text(job.prompt)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     if !job.prompt.isEmpty {
                         Button {
                             copyToClipboard(job.prompt)

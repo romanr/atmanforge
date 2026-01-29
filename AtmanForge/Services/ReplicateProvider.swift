@@ -19,7 +19,7 @@ class ReplicateProvider: AIProvider {
             input: input
         )
         onPredictionCreated(prediction.urls.cancel)
-        let finalPrediction = try await pollPrediction(prediction)
+        let finalPrediction = try await waitForPrediction(prediction)
         let allImageData = try await downloadImages(from: finalPrediction)
 
         return GenerationResult(imageDataArray: allImageData)
@@ -84,15 +84,10 @@ class ReplicateProvider: AIProvider {
             "aspect_ratio": request.aspectRatio.rawValue,
         ]
 
-        // Upload reference images and pass their URLs
         if !request.referenceImages.isEmpty {
-            print("[Replicate] Uploading \(request.referenceImages.count) reference image(s)...")
             let fileURLs = try await uploadReferenceImages(request.referenceImages)
             let key = request.model == .gptImage15 ? "input_images" : "image_input"
-            print("[Replicate] Using key '\(key)' with \(fileURLs.count) URL(s): \(fileURLs)")
             input[key] = fileURLs
-        } else {
-            print("[Replicate] No reference images to upload")
         }
 
         input["number_of_images"] = request.imageCount
@@ -127,9 +122,7 @@ class ReplicateProvider: AIProvider {
         try await withThrowingTaskGroup(of: (Int, String).self) { group in
             for (index, imageData) in images.enumerated() {
                 group.addTask {
-                    print("[Replicate] Uploading reference image \(index) (\(imageData.count) bytes)...")
                     let url = try await self.uploadFile(imageData, filename: "reference_\(index).png")
-                    print("[Replicate] Upload \(index) returned URL: \(url)")
                     return (index, url)
                 }
             }
@@ -158,13 +151,8 @@ class ReplicateProvider: AIProvider {
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         urlRequest.httpBody = body
 
-        print("[Replicate] POST /v1/files (\(body.count) bytes, boundary=\(boundary))")
-
         let (responseData, response) = try await session.data(for: urlRequest)
         try validateResponse(response, data: responseData)
-
-        let responseString = String(data: responseData, encoding: .utf8) ?? "<non-utf8>"
-        print("[Replicate] File upload response: \(responseString)")
 
         let fileResponse = try JSONDecoder().decode(FileUploadResponse.self, from: responseData)
         return fileResponse.urls.get
@@ -182,21 +170,85 @@ class ReplicateProvider: AIProvider {
         let body: [String: Any] = ["input": input]
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        // Log input keys (truncate long values like base64/URLs)
-        let inputKeys = input.keys.sorted()
-        let inputSummary = inputKeys.map { key -> String in
-            if let arr = input[key] as? [String] {
-                return "\(key): [\(arr.count) item(s)] \(arr.map { String($0.prefix(80)) })"
-            }
-            return "\(key): \(input[key] ?? "nil")"
-        }
-        print("[Replicate] Creating prediction for \(model) with input: \(inputSummary.joined(separator: ", "))")
-
         let (data, response) = try await session.data(for: urlRequest)
         try validateResponse(response, data: data)
 
         return try JSONDecoder().decode(PredictionResponse.self, from: data)
     }
+
+    private func waitForPrediction(_ prediction: PredictionResponse) async throws -> PredictionResponse {
+        if let streamURL = prediction.urls.stream {
+            return try await streamPrediction(prediction, streamURL: streamURL)
+        } else {
+            return try await pollPrediction(prediction)
+        }
+    }
+
+    // MARK: - SSE Streaming
+
+    private func streamPrediction(_ prediction: PredictionResponse, streamURL: String) async throws -> PredictionResponse {
+        guard let url = URL(string: streamURL) else {
+            throw ReplicateError.invalidURL
+        }
+
+        var urlRequest = URLRequest(url: url)
+        urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+
+        let (bytes, response) = try await session.bytes(for: urlRequest)
+        try validateResponse(response, data: Data())
+
+        var currentEvent = ""
+        var currentData = ""
+
+        for try await line in bytes.lines {
+            if line.hasPrefix("event: ") {
+                currentEvent = String(line.dropFirst(7))
+            } else if line.hasPrefix("data: ") {
+                currentData += String(line.dropFirst(6))
+            } else if line.isEmpty && !currentEvent.isEmpty {
+                switch currentEvent {
+                case "done":
+                    return try await fetchPrediction(url: prediction.urls.get)
+                case "error":
+                    let errorMsg = currentData.isEmpty ? "No reason given" : currentData
+                    throw ReplicateError.generationFailed(errorMsg)
+                default:
+                    break
+                }
+
+                currentEvent = ""
+                currentData = ""
+            }
+        }
+
+        return try await fetchPrediction(url: prediction.urls.get)
+    }
+
+    private func fetchPrediction(url: String) async throws -> PredictionResponse {
+        guard let getURL = URL(string: url) else {
+            throw ReplicateError.invalidURL
+        }
+
+        var urlRequest = URLRequest(url: getURL)
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: urlRequest)
+        try validateResponse(response, data: data)
+
+        let prediction = try JSONDecoder().decode(PredictionResponse.self, from: data)
+
+        guard prediction.status == "succeeded" else {
+            let raw = prediction.error
+            let errorMsg = (raw == nil || raw!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                ? "No reason given"
+                : raw!
+            throw ReplicateError.generationFailed(errorMsg)
+        }
+
+        return prediction
+    }
+
+    // MARK: - Polling (fallback)
 
     private func pollPrediction(_ prediction: PredictionResponse) async throws -> PredictionResponse {
         guard let getURL = URL(string: prediction.urls.get) else {
@@ -278,6 +330,7 @@ private struct PredictionResponse: Codable {
 private struct PredictionURLs: Codable {
     let get: String
     let cancel: String
+    let stream: String?
 }
 
 private struct FileUploadResponse: Codable {
