@@ -131,18 +131,6 @@ class AppState {
         generationJobs.filter { $0.status == .running || $0.status == .pending }.count
     }
 
-    func estimatedDuration(for model: AIModel) -> TimeInterval? {
-        let completed = generationJobs.filter {
-            $0.model == model && $0.status == .completed &&
-            $0.startedAt != nil && $0.completedAt != nil
-        }
-        guard !completed.isEmpty else { return nil }
-        let total = completed.reduce(0.0) { sum, job in
-            sum + job.completedAt!.timeIntervalSince(job.startedAt!)
-        }
-        return total / Double(completed.count)
-    }
-
     // MARK: - Model Changed
 
     func onModelChanged() {

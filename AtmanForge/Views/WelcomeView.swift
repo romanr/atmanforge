@@ -13,7 +13,7 @@ struct WelcomeView: View {
                 .font(.largeTitle)
                 .fontWeight(.bold)
 
-            Text("Choose a folder to store your projects.\nAll projects and canvases will be saved here.")
+            Text("Choose a folder to store your projects.\nAll generated images will be saved here.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 

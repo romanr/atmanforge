@@ -1,5 +1,7 @@
 # AtmanForge
 
+Hey, I'm the creator of AtmanForge. With most text being LLM generated these days I wanted a personal line to start off the read me with. I created this project as I noticed I really only use a few image models when creating assets so I wanted a cheap, fast and convenient way to access the models. And it was a ton of fun to build! All code in Claude Code, Opus 4.5. Hope you find it useful!
+
 **Open source AI image generation app for macOS.**
 
 Generate stunning images with state-of-the-art AI models. Bring your own API keys — no subscription, no backend, complete privacy.

@@ -233,21 +233,13 @@ struct ActivityView: View {
     }
 
     private func elapsedTimeView(job: GenerationJob) -> some View {
-        let estimate = appState.estimatedDuration(for: job.model)
-        return TimelineView(.periodic(from: .now, by: 1)) { context in
+        TimelineView(.periodic(from: .now, by: 1)) { context in
             if let start = job.startedAt {
                 let elapsed = context.date.timeIntervalSince(start)
-                if let est = estimate {
-                    Text("\(Self.formatDuration(elapsed)) (est. \(Self.formatDuration(est)))")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                } else {
-                    Text(Self.formatDuration(elapsed))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
+                Text(Self.formatDuration(elapsed))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
         }
     }
