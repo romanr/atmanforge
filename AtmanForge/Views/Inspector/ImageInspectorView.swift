@@ -6,6 +6,11 @@ import AppKit
 struct HorizontalClipShape: Shape {
     var clipFromX: CGFloat
 
+    var animatableData: CGFloat {
+        get { clipFromX }
+        set { clipFromX = newValue }
+    }
+
     func path(in rect: CGRect) -> Path {
         Path(CGRect(x: clipFromX, y: 0, width: rect.width - clipFromX, height: rect.height))
     }
@@ -232,6 +237,7 @@ struct ImageInspectorView: View {
                 // Divider line + handle
                 dividerHandle(dividerX: dividerX, height: geo.size.height)
             }
+            .drawingGroup()
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
