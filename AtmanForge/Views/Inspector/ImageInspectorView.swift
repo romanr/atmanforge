@@ -55,11 +55,15 @@ struct ComparisonOverlayView<MenuContent: View>: View {
                         Circle()
                             .fill(Color.white)
                             .frame(width: 32, height: 32)
+                            .overlay {
+                                Circle()
+                                    .strokeBorder(Color.black.opacity(0.15), lineWidth: 1)
+                            }
                             .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 0)
                             .overlay {
                                 Image(systemName: "arrow.left.and.right")
                                     .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Color.gray)
                             }
                     }
                     .position(x: dividerX, y: geo.size.height / 2)
@@ -308,7 +312,9 @@ struct ImageInspectorView: View {
         let refURL = root.appendingPathComponent(job.referenceImagePaths[0])
         guard let refSize = imageSize(url: refURL) else { return false }
         let ratio = job.aspectRatio.ratio
-        return refSize.width * ratio.h == refSize.height * ratio.w
+        let refAspect = Double(refSize.width) / Double(refSize.height)
+        let jobAspect = Double(ratio.w) / Double(ratio.h)
+        return abs(refAspect - jobAspect) / jobAspect < 0.05
     }
 
     @ViewBuilder
