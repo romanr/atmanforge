@@ -11,6 +11,34 @@ struct AtmanForgeApp: App {
         }
         .commands {
             ProjectCommands(appState: appState)
+            CommandGroup(replacing: .appInfo) {
+                Button("About AtmanForge") {
+                    let credits = NSMutableAttributedString()
+                    let style = NSMutableParagraphStyle()
+                    style.alignment = .center
+
+                    credits.append(NSAttributedString(
+                        string: "MIT License \u{00A9} Turbo Lynx Oy\n",
+                        attributes: [
+                            .font: NSFont.systemFont(ofSize: 11),
+                            .foregroundColor: NSColor.labelColor,
+                            .paragraphStyle: style
+                        ]
+                    ))
+                    credits.append(NSAttributedString(
+                        string: "@nixarn",
+                        attributes: [
+                            .font: NSFont.systemFont(ofSize: 11),
+                            .link: URL(string: "https://x.com/nixarn")!,
+                            .paragraphStyle: style
+                        ]
+                    ))
+
+                    NSApplication.shared.orderFrontStandardAboutPanel(options: [
+                        .credits: credits
+                    ])
+                }
+            }
             CommandGroup(replacing: .undoRedo) {
                 Button("Undo") { appState.undo() }
                     .keyboardShortcut("z", modifiers: .command)
