@@ -166,15 +166,14 @@ struct ImageInspectorView: View {
             VStack(spacing: 0) {
                 header
                 Divider()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        comparisonImageView(job)
-                        referenceImageThumbnails(job)
-                        metadataSection(job)
-                        actionButtons(job)
-                    }
-                    .padding(16)
+                VStack(alignment: .leading, spacing: 16) {
+                    comparisonImageView(job)
+                    referenceImageThumbnails(job)
+                    metadataSection(job)
+                    Spacer()
+                    actionButtons(job)
                 }
+                .padding(16)
             }
             .frame(width: 320)
             #if os(macOS)
@@ -215,13 +214,12 @@ struct ImageInspectorView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    multiSelectionSummary
-                    multiSelectionActions
-                }
-                .padding(16)
+            VStack(alignment: .leading, spacing: 16) {
+                multiSelectionSummary
+                Spacer()
+                multiSelectionActions
             }
+            .padding(16)
         }
         .frame(width: 320)
         #if os(macOS)
@@ -416,6 +414,7 @@ struct ImageInspectorView: View {
                 Image(nsImage: nsImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity)
                     .background(checkerboard)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .onDrag {
@@ -430,6 +429,7 @@ struct ImageInspectorView: View {
                 Image(uiImage: uiImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity)
                     .background(checkerboard)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .onDrag {

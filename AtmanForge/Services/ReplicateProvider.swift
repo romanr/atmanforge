@@ -14,15 +14,35 @@ class ReplicateProvider: AIProvider {
     func generateImage(request: GenerationRequest, onPredictionCreated: @Sendable @escaping (String) -> Void) async throws -> GenerationResult {
         let input = try await buildInput(for: request)
 
-        let prediction = try await createPrediction(
-            model: request.model.replicateModelID,
-            input: input
-        )
-        onPredictionCreated(prediction.urls.cancel)
-        let finalPrediction = try await pollPrediction(prediction)
-        let allImageData = try await downloadImages(from: finalPrediction)
-
-        return GenerationResult(imageDataArray: allImageData)
+        if request.model.supportsNativeImageCount || request.imageCount <= 1 {
+            let prediction = try await createPrediction(
+                model: request.model.replicateModelID,
+                input: input
+            )
+            onPredictionCreated(prediction.urls.cancel)
+            let finalPrediction = try await pollPrediction(prediction)
+            let allImageData = try await downloadImages(from: finalPrediction)
+            return GenerationResult(imageDataArray: allImageData)
+        } else {
+            return try await withThrowingTaskGroup(of: [Data].self) { group in
+                for _ in 0..<request.imageCount {
+                    group.addTask {
+                        let prediction = try await self.createPrediction(
+                            model: request.model.replicateModelID,
+                            input: input
+                        )
+                        onPredictionCreated(prediction.urls.cancel)
+                        let finalPrediction = try await self.pollPrediction(prediction)
+                        return try await self.downloadImages(from: finalPrediction)
+                    }
+                }
+                var allImageData: [Data] = []
+                for try await images in group {
+                    allImageData.append(contentsOf: images)
+                }
+                return GenerationResult(imageDataArray: allImageData)
+            }
+        }
     }
 
     func removeBackground(imageData: Data) async throws -> Data {
@@ -90,7 +110,9 @@ class ReplicateProvider: AIProvider {
             input[key] = fileURLs
         }
 
-        input["number_of_images"] = request.imageCount
+        if request.model.supportsNativeImageCount {
+            input["number_of_images"] = request.imageCount
+        }
 
         switch request.model {
         case .gemini25, .removeBackground:

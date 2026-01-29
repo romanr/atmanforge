@@ -109,6 +109,13 @@ enum AIModel: String, Codable {
         }
     }
 
+    var supportsNativeImageCount: Bool {
+        switch self {
+        case .gptImage15: return true
+        case .gemini25, .gemini30, .removeBackground: return false
+        }
+    }
+
     var maxReferenceImages: Int {
         switch self {
         case .gemini25: return 6
