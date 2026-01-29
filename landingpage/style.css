@@ -186,7 +186,8 @@ nav a:hover {
 }
 
 .gallery-caption {
-    margin-top: 1rem;
+    margin-top: -16px;
+    margin-bottom: 32px;
     font-size: 1rem;
     color: var(--text-secondary);
     transition: opacity 0.3s;
@@ -387,5 +388,9 @@ footer a:hover {
 
     .gallery-thumb {
         width: 80px;
+    }
+
+    .gallery-caption {
+        margin-top: -8px;
     }
 }
