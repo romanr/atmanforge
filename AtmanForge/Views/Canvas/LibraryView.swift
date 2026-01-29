@@ -42,6 +42,9 @@ struct LibraryImageEntry: Identifiable {
 struct LibraryView: View {
     @Environment(AppState.self) private var appState
     var thumbnailMaxSize: CGFloat = 96
+    @State private var previewImageURL: URL?
+    @State private var previewModelName: String?
+    @State private var previewPrompt: String?
 
     private var projectRoot: URL? {
         appState.projectManager.projectsRootURL
@@ -171,6 +174,20 @@ struct LibraryView: View {
         #else
         .background(Color(uiColor: .systemBackground))
         #endif
+        .sheet(isPresented: Binding(
+            get: { previewImageURL != nil },
+            set: { if !$0 { previewImageURL = nil } }
+        )) {
+            if let url = previewImageURL {
+                ImagePreviewView(
+                    imageURL: url,
+                    modelName: previewModelName,
+                    prompt: previewPrompt
+                ) {
+                    previewImageURL = nil
+                }
+            }
+        }
     }
 
     // MARK: - Grid Header Bar
@@ -419,6 +436,13 @@ struct LibraryView: View {
             onTap: { cmd, shift in
                 handleTap(entry: entry, commandDown: cmd, shiftDown: shift, entries: entries)
             },
+            onPreview: {
+                if let savedImageURL {
+                    previewImageURL = savedImageURL
+                    previewModelName = entry.model.displayName
+                    previewPrompt = entry.prompt
+                }
+            },
             extraContextMenu: {
                 AnyView(gridContextMenuExtra(entry: entry, selectedCount: selectedCount))
             },
@@ -581,6 +605,14 @@ struct LibraryView: View {
         if let fileURL = savedImageURL {
             let selectedCount = appState.selectedLibraryImageIDs.count
             let isMulti = selectedCount > 1 && appState.selectedLibraryImageIDs.contains(entry.id)
+
+            Button {
+                previewImageURL = fileURL
+                previewModelName = entry.model.displayName
+                previewPrompt = entry.prompt
+            } label: {
+                Label("Preview", systemImage: "eye")
+            }
 
             Button {
                 #if os(macOS)

@@ -7,6 +7,9 @@ struct ActivityView: View {
     @Environment(AppState.self) private var appState
     var thumbnailMaxSize: CGFloat = 64
     @State private var hoveredJobID: UUID?
+    @State private var previewImageURL: URL?
+    @State private var previewModelName: String?
+    @State private var previewPrompt: String?
 
     private var projectRoot: URL? {
         appState.projectManager.projectsRootURL
@@ -26,6 +29,20 @@ struct ActivityView: View {
         #else
         .background(Color(uiColor: .systemBackground))
         #endif
+        .sheet(isPresented: Binding(
+            get: { previewImageURL != nil },
+            set: { if !$0 { previewImageURL = nil } }
+        )) {
+            if let url = previewImageURL {
+                ImagePreviewView(
+                    imageURL: url,
+                    modelName: previewModelName,
+                    prompt: previewPrompt
+                ) {
+                    previewImageURL = nil
+                }
+            }
+        }
     }
 
     private var emptyState: some View {
@@ -163,10 +180,18 @@ struct ActivityView: View {
                                 root.appendingPathComponent(thumbPath),
                                 aspectRatio: job.aspectRatio,
                                 isSelected: appState.selectedImageJob?.id == job.id && appState.selectedImageIndex == index,
-                                savedImageURL: savedURL
-                            ) {
-                                appState.selectImage(job: job, index: index)
-                            }
+                                savedImageURL: savedURL,
+                                onTap: {
+                                    appState.selectImage(job: job, index: index)
+                                },
+                                onPreview: {
+                                    if let savedURL {
+                                        previewImageURL = savedURL
+                                        previewModelName = job.model.displayName
+                                        previewPrompt = job.prompt
+                                    }
+                                }
+                            )
                         }
                     }
                     .padding(.top, 2)
@@ -238,7 +263,7 @@ struct ActivityView: View {
         }
     }
 
-    private func thumbnailImage(_ url: URL, aspectRatio: AspectRatio, isSelected: Bool = false, savedImageURL: URL? = nil, onTap: (() -> Void)? = nil) -> some View {
+    private func thumbnailImage(_ url: URL, aspectRatio: AspectRatio, isSelected: Bool = false, savedImageURL: URL? = nil, onTap: (() -> Void)? = nil, onPreview: (() -> Void)? = nil) -> some View {
         let maxDim = thumbnailMaxSize
         let (w, h) = aspectRatio.ratio
         let thumbWidth: CGFloat
@@ -252,7 +277,7 @@ struct ActivityView: View {
         }
 
         let wrappedTap: (Bool, Bool) -> Void = { _, _ in onTap?() }
-        return ThumbnailHoverView(url: url, width: thumbWidth, height: thumbHeight, isSelected: isSelected, savedImageURL: savedImageURL, onTap: wrappedTap)
+        return ThumbnailHoverView(url: url, width: thumbWidth, height: thumbHeight, isSelected: isSelected, savedImageURL: savedImageURL, onTap: wrappedTap, onPreview: onPreview)
     }
 
     private func copyToClipboard(_ text: String) {
@@ -286,6 +311,7 @@ struct ThumbnailHoverView: View {
     var isSelected: Bool = false
     var savedImageURL: URL?
     var onTap: ((_ commandDown: Bool, _ shiftDown: Bool) -> Void)?
+    var onPreview: (() -> Void)?
     var extraContextMenu: (() -> AnyView)?
     /// URLs to add as references when multi-selected (nil = single-image default)
     var multiSelectedImageURLs: [URL]?
@@ -321,6 +347,14 @@ struct ThumbnailHoverView: View {
     @ViewBuilder
     private var contextMenuItems: some View {
         if let fileURL = savedImageURL {
+            if let onPreview {
+                Button {
+                    onPreview()
+                } label: {
+                    Label("Preview", systemImage: "eye")
+                }
+            }
+
             Button {
                 #if os(macOS)
                 NSWorkspace.shared.activateFileViewerSelecting([fileURL])

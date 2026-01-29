@@ -701,7 +701,7 @@ class AppState {
         // Create job upfront so it appears in the activity list immediately
         let bgJob = GenerationJob(
             model: .removeBackground,
-            prompt: job.prompt,
+            prompt: "",
             projectID: projectRoot.lastPathComponent,
             aspectRatio: job.aspectRatio,
             resolution: nil,

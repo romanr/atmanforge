@@ -94,12 +94,54 @@ struct ComparisonOverlayView<MenuContent: View>: View {
     }
 }
 
+struct ImagePreviewView: View {
+    let imageURL: URL
+    var modelName: String?
+    var prompt: String?
+    var onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let nsImage = NSImage(contentsOf: imageURL) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            Divider()
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let modelName {
+                        Text(modelName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let prompt, !prompt.isEmpty {
+                        Text(prompt)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer()
+                Button("Close") { onClose() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding()
+            .background(.bar)
+        }
+        .background(.black)
+        .frame(minWidth: 800, minHeight: 600)
+    }
+}
+
 struct ImageInspectorView: View {
     @Environment(AppState.self) private var appState
 
     @State private var selectedReferenceIndex: Int = 0
     @State private var comparisonActive: Bool = false
     @State private var comparisonViewID: UUID = UUID()
+    @State private var previewImageURL: URL?
 
     private var job: GenerationJob? {
         appState.selectedImageJob
@@ -149,6 +191,20 @@ struct ImageInspectorView: View {
                 selectedReferenceIndex = 0
                 comparisonActive = false
                 comparisonViewID = UUID()
+            }
+            .sheet(isPresented: Binding(
+                get: { previewImageURL != nil },
+                set: { if !$0 { previewImageURL = nil } }
+            )) {
+                if let url = previewImageURL {
+                    ImagePreviewView(
+                        imageURL: url,
+                        modelName: job.model.displayName,
+                        prompt: job.prompt
+                    ) {
+                        previewImageURL = nil
+                    }
+                }
             }
         }
     }
@@ -248,9 +304,18 @@ struct ImageInspectorView: View {
         .padding(.vertical, 10)
     }
 
+    private func canCompare(_ job: GenerationJob) -> Bool {
+        guard job.referenceImagePaths.count == 1 else { return false }
+        guard let root = projectRoot else { return false }
+        let refURL = root.appendingPathComponent(job.referenceImagePaths[0])
+        guard let refSize = imageSize(url: refURL) else { return false }
+        let ratio = job.aspectRatio.ratio
+        return refSize.width * ratio.h == refSize.height * ratio.w
+    }
+
     @ViewBuilder
     private func comparisonImageView(_ job: GenerationJob) -> some View {
-        if job.referenceImagePaths.isEmpty || job.model == .removeBackground {
+        if job.referenceImagePaths.isEmpty || job.model == .removeBackground || !canCompare(job) {
             fullImage(job)
         } else {
             comparisonSlider(job)
@@ -283,15 +348,17 @@ struct ImageInspectorView: View {
                         .font(.subheadline)
                         .fontWeight(.semibold)
                     Spacer()
-                    Button {
-                        comparisonActive = true
-                        comparisonViewID = UUID()
-                    } label: {
-                        Text("Compare")
-                            .font(.caption)
+                    if canCompare(job) {
+                        Button {
+                            comparisonActive = true
+                            comparisonViewID = UUID()
+                        } label: {
+                            Text("Compare")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.accentColor)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.accentColor)
                 }
 
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -393,6 +460,12 @@ struct ImageInspectorView: View {
 
     @ViewBuilder
     private func imageContextMenu(imageURL: URL) -> some View {
+        Button {
+            previewImageURL = imageURL
+        } label: {
+            Label("Preview", systemImage: "eye")
+        }
+
         #if os(macOS)
         Button {
             NSWorkspace.shared.activateFileViewerSelecting([imageURL])
@@ -430,6 +503,7 @@ struct ImageInspectorView: View {
                 .fontWeight(.semibold)
 
             metadataRow("Model", value: job.model.displayName)
+            metadataRow("Aspect Ratio", value: job.aspectRatio.displayName)
 
             if imageIndex < job.savedImagePaths.count, let root = projectRoot {
                 let imageURL = root.appendingPathComponent(job.savedImagePaths[imageIndex])
