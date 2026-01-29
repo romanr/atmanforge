@@ -16,7 +16,7 @@ Generate stunning images with state-of-the-art AI models. Bring your own API key
 - **Multiple AI Models** — Access Gemini, GPT-Image, and more. Switch between models instantly.
 - **Bring Your Own Keys** — Use your own API keys stored securely in your Mac's Keychain.
 - **Reference Images** — Guide AI generation with reference images. Sketch directly on them.
-- **Background Removal** — One-click AI-powered background removal.
+- **Background Removal** — One-click background removal powered by [bria/remove-background](https://replicate.com/bria/remove-background).
 - **Project Organization** — Keep generations organized with full metadata and activity history.
 - **Privacy First** — Everything runs locally. Your data never touches our servers.
 
