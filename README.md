@@ -6,6 +6,7 @@ Hey, I'm the creator of AtmanForge. With most text being LLM generated these day
 
 Generate stunning images with state-of-the-art AI models. Bring your own API keys — no subscription, no backend, complete privacy.
 
+[![Website](https://img.shields.io/badge/Website-atmanforge.com-blue)](https://atmanforge.com)
 ![macOS](https://img.shields.io/badge/macOS-15.0+-blue?logo=apple)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)
