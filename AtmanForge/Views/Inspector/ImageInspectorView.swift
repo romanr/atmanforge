@@ -16,11 +16,90 @@ struct HorizontalClipShape: Shape {
     }
 }
 
+struct ComparisonOverlayView<MenuContent: View>: View {
+    let referenceURL: URL
+    let generatedURL: URL
+    var initialPosition: CGFloat = 0.0
+    let contextMenuActions: () -> MenuContent
+
+    @State private var position: CGFloat = 0.0
+    @State private var refImage: NSImage?
+    @State private var genImage: NSImage?
+
+    var body: some View {
+        GeometryReader { geo in
+            let dividerX = geo.size.width * position
+
+            if let ref = refImage, let gen = genImage {
+                ZStack(alignment: .leading) {
+                    Image(nsImage: ref)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+
+                    Image(nsImage: gen)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                        .clipShape(HorizontalClipShape(clipFromX: dividerX))
+
+                    // Divider line + handle
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.white)
+                            .frame(width: 2, height: geo.size.height)
+                            .shadow(color: .black.opacity(0.3), radius: 1, x: 0, y: 0)
+
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 32, height: 32)
+                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 0)
+                            .overlay {
+                                Image(systemName: "arrow.left.and.right")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                    }
+                    .position(x: dividerX, y: geo.size.height / 2)
+                    .allowsHitTesting(false)
+                }
+                .drawingGroup()
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            position = min(max(value.location.x / geo.size.width, 0), 1)
+                        }
+                )
+                .contextMenu {
+                    contextMenuActions()
+                }
+            }
+        }
+        .aspectRatio(contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .onAppear {
+            position = initialPosition
+            loadImages()
+        }
+        .onChange(of: referenceURL) { loadImages() }
+        .onChange(of: generatedURL) { loadImages() }
+    }
+
+    private func loadImages() {
+        refImage = NSImage(contentsOf: referenceURL)
+        genImage = NSImage(contentsOf: generatedURL)
+    }
+}
+
 struct ImageInspectorView: View {
     @Environment(AppState.self) private var appState
 
     @State private var selectedReferenceIndex: Int = 0
-    @State private var comparisonPosition: CGFloat = 0.0
+    @State private var comparisonActive: Bool = false
+    @State private var comparisonViewID: UUID = UUID()
 
     private var job: GenerationJob? {
         appState.selectedImageJob
@@ -63,11 +142,13 @@ struct ImageInspectorView: View {
             #endif
             .onChange(of: appState.selectedImageJob?.id) { _, _ in
                 selectedReferenceIndex = 0
-                comparisonPosition = 0.0
+                comparisonActive = false
+                comparisonViewID = UUID()
             }
             .onChange(of: appState.selectedImageIndex) { _, _ in
                 selectedReferenceIndex = 0
-                comparisonPosition = 0.0
+                comparisonActive = false
+                comparisonViewID = UUID()
             }
         }
     }
@@ -183,93 +264,14 @@ struct ImageInspectorView: View {
             let safeRefIndex = min(selectedReferenceIndex, job.referenceImagePaths.count - 1)
             let referenceURL = root.appendingPathComponent(job.referenceImagePaths[max(0, safeRefIndex)])
 
-            #if os(macOS)
-            if let generatedNS = NSImage(contentsOf: generatedURL),
-               let referenceNS = NSImage(contentsOf: referenceURL) {
-                comparisonOverlay(
-                    referenceImage: Image(nsImage: referenceNS),
-                    generatedImage: Image(nsImage: generatedNS),
-                    generatedURL: generatedURL
-                )
-            } else {
-                fullImage(job)
-            }
-            #else
-            if let genData = try? Data(contentsOf: generatedURL),
-               let genUI = UIImage(data: genData),
-               let refData = try? Data(contentsOf: referenceURL),
-               let refUI = UIImage(data: refData) {
-                comparisonOverlay(
-                    referenceImage: Image(uiImage: refUI),
-                    generatedImage: Image(uiImage: genUI),
-                    generatedURL: generatedURL
-                )
-            } else {
-                fullImage(job)
-            }
-            #endif
-        }
-    }
-
-    private func comparisonOverlay(referenceImage: Image, generatedImage: Image, generatedURL: URL) -> some View {
-        GeometryReader { geo in
-            let dividerX = geo.size.width * comparisonPosition
-
-            ZStack(alignment: .leading) {
-                // Base layer: reference image
-                referenceImage
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
-
-                // Overlay: generated image clipped from dividerX to right
-                generatedImage
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
-                    .clipShape(HorizontalClipShape(clipFromX: dividerX))
-                    .contextMenu {
-                        imageContextMenu(imageURL: generatedURL)
-                    }
-
-                // Divider line + handle
-                dividerHandle(dividerX: dividerX, height: geo.size.height)
-            }
-            .drawingGroup()
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        comparisonPosition = min(max(value.location.x / geo.size.width, 0), 1)
-                    }
+            ComparisonOverlayView(
+                referenceURL: referenceURL,
+                generatedURL: generatedURL,
+                initialPosition: comparisonActive ? 0.5 : 0.0,
+                contextMenuActions: { imageContextMenu(imageURL: generatedURL) }
             )
+            .id(comparisonViewID)
         }
-        .aspectRatio(contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-    }
-
-    private func dividerHandle(dividerX: CGFloat, height: CGFloat) -> some View {
-        ZStack {
-            // Vertical line
-            Rectangle()
-                .fill(Color.white)
-                .frame(width: 2, height: height)
-                .shadow(color: .black.opacity(0.3), radius: 1, x: 0, y: 0)
-
-            // Circle handle
-            Circle()
-                .fill(Color.white)
-                .frame(width: 32, height: 32)
-                .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 0)
-                .overlay {
-                    Image(systemName: "arrow.left.and.right")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-        }
-        .position(x: dividerX, y: height / 2)
-        .allowsHitTesting(false)
     }
 
     @ViewBuilder
@@ -282,9 +284,8 @@ struct ImageInspectorView: View {
                         .fontWeight(.semibold)
                     Spacer()
                     Button {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            comparisonPosition = 0.5
-                        }
+                        comparisonActive = true
+                        comparisonViewID = UUID()
                     } label: {
                         Text("Compare")
                             .font(.caption)

@@ -19,7 +19,7 @@ class ReplicateProvider: AIProvider {
             input: input
         )
         onPredictionCreated(prediction.urls.cancel)
-        let finalPrediction = try await waitForPrediction(prediction)
+        let finalPrediction = try await pollPrediction(prediction)
         let allImageData = try await downloadImages(from: finalPrediction)
 
         return GenerationResult(imageDataArray: allImageData)
@@ -176,79 +176,7 @@ class ReplicateProvider: AIProvider {
         return try JSONDecoder().decode(PredictionResponse.self, from: data)
     }
 
-    private func waitForPrediction(_ prediction: PredictionResponse) async throws -> PredictionResponse {
-        if let streamURL = prediction.urls.stream {
-            return try await streamPrediction(prediction, streamURL: streamURL)
-        } else {
-            return try await pollPrediction(prediction)
-        }
-    }
-
-    // MARK: - SSE Streaming
-
-    private func streamPrediction(_ prediction: PredictionResponse, streamURL: String) async throws -> PredictionResponse {
-        guard let url = URL(string: streamURL) else {
-            throw ReplicateError.invalidURL
-        }
-
-        var urlRequest = URLRequest(url: url)
-        urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-
-        let (bytes, response) = try await session.bytes(for: urlRequest)
-        try validateResponse(response, data: Data())
-
-        var currentEvent = ""
-        var currentData = ""
-
-        for try await line in bytes.lines {
-            if line.hasPrefix("event: ") {
-                currentEvent = String(line.dropFirst(7))
-            } else if line.hasPrefix("data: ") {
-                currentData += String(line.dropFirst(6))
-            } else if line.isEmpty && !currentEvent.isEmpty {
-                switch currentEvent {
-                case "done":
-                    return try await fetchPrediction(url: prediction.urls.get)
-                case "error":
-                    let errorMsg = currentData.isEmpty ? "No reason given" : currentData
-                    throw ReplicateError.generationFailed(errorMsg)
-                default:
-                    break
-                }
-
-                currentEvent = ""
-                currentData = ""
-            }
-        }
-
-        return try await fetchPrediction(url: prediction.urls.get)
-    }
-
-    private func fetchPrediction(url: String) async throws -> PredictionResponse {
-        guard let getURL = URL(string: url) else {
-            throw ReplicateError.invalidURL
-        }
-
-        var urlRequest = URLRequest(url: getURL)
-        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await session.data(for: urlRequest)
-        try validateResponse(response, data: data)
-
-        let prediction = try JSONDecoder().decode(PredictionResponse.self, from: data)
-
-        guard prediction.status == "succeeded" else {
-            let raw = prediction.error
-            let errorMsg = (raw == nil || raw!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                ? "No reason given"
-                : raw!
-            throw ReplicateError.generationFailed(errorMsg)
-        }
-
-        return prediction
-    }
-
-    // MARK: - Polling (fallback)
+    // MARK: - Polling
 
     private func pollPrediction(_ prediction: PredictionResponse) async throws -> PredictionResponse {
         guard let getURL = URL(string: prediction.urls.get) else {
