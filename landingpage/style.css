@@ -62,7 +62,7 @@ header {
 }
 
 .logo-icon {
-    font-size: 1.5rem;
+    border-radius: 6px;
 }
 
 nav {
@@ -96,11 +96,23 @@ nav a:hover {
     background: var(--bg-card-hover);
 }
 
+.x-link {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem;
+    border-radius: 8px;
+    transition: color 0.2s;
+}
+
+.x-link:hover {
+    color: var(--text-primary);
+}
+
 /* Hero */
 .hero {
     text-align: center;
-    padding: 8rem 2rem 6rem;
-    max-width: 900px;
+    padding: 5rem 2rem 4rem;
+    max-width: 1200px;
     margin: 0 auto;
 }
 
@@ -148,6 +160,68 @@ nav a:hover {
     margin-top: 2rem;
     font-size: 0.9rem;
     color: var(--text-tertiary);
+}
+
+.license-note a,
+.license-note a:visited {
+    color: white;
+    text-decoration: underline;
+}
+
+/* Screenshot Gallery */
+.gallery {
+    margin-top: 4rem;
+}
+
+.gallery-preview {
+    margin-bottom: 1.5rem;
+}
+
+.gallery-preview img {
+    width: 75%;
+    margin: 0 auto;
+    display: block;
+    border-radius: 12px;
+    transition: opacity 0.3s;
+}
+
+.gallery-caption {
+    margin-top: 1rem;
+    font-size: 1rem;
+    color: var(--text-secondary);
+    transition: opacity 0.3s;
+}
+
+.gallery-thumbs {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.gallery-thumb {
+    background: none;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    padding: 0;
+    cursor: pointer;
+    transition: border-color 0.2s, opacity 0.2s;
+    opacity: 0.5;
+    width: 120px;
+}
+
+.gallery-thumb:hover {
+    opacity: 0.8;
+}
+
+.gallery-thumb.active {
+    border-color: var(--accent);
+    opacity: 1;
+}
+
+.gallery-thumb img {
+    width: 100%;
+    display: block;
+    border-radius: 8px;
 }
 
 .cta-buttons {
@@ -228,8 +302,8 @@ nav a:hover {
 }
 
 .feature-icon {
-    font-size: 2.5rem;
     margin-bottom: 1rem;
+    color: var(--accent-light);
 }
 
 .feature-card h3 {
@@ -247,6 +321,12 @@ nav a:hover {
     text-align: center;
     padding: 6rem 2rem;
     background: linear-gradient(180deg, transparent 0%, rgba(99, 102, 241, 0.05) 100%);
+}
+
+.cta-icon {
+    border-radius: 16px;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
 .cta-section h2 {
@@ -299,5 +379,13 @@ footer a:hover {
 
     .features-grid {
         grid-template-columns: 1fr;
+    }
+
+    .gallery-preview img {
+        width: 95%;
+    }
+
+    .gallery-thumb {
+        width: 80px;
     }
 }

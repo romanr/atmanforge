@@ -21,7 +21,7 @@ Generate stunning images with state-of-the-art AI models. Bring your own API key
 
 - macOS 15.0 or later
 - Xcode 16.0 or later (for building)
-- A Replicate API key (for AI model access)
+- A [Replicate](https://replicate.com) API key — currently the only supported provider for accessing AI models
 
 ## Getting Started
 
@@ -50,7 +50,7 @@ Select your target device and press `⌘R` to build and run.
 
 ## Supported Models
 
-AtmanForge uses [Replicate](https://replicate.com) to access various AI models:
+AtmanForge currently uses [Replicate](https://replicate.com) as its sole provider to access AI models. You'll need a Replicate API key to use the app.
 
 | Model | Description |
 |-------|-------------|
@@ -58,7 +58,7 @@ AtmanForge uses [Replicate](https://replicate.com) to access various AI models:
 | GPT-Image 1.5 | OpenAI's image generation model |
 | Remove Background | AI-powered background removal |
 
-*More models coming soon!*
+*More models and providers coming soon!*
 
 ## Architecture
 
@@ -100,7 +100,7 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ## Credits
 
-Built with ♥ by [Turbo Lynx](https://github.com/Nixarn)
+Built with ♥ by [Turbo Lynx Oy](https://github.com/Nixarn)
 
 ---
 

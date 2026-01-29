@@ -140,3 +140,11 @@ window.addEventListener('mousemove', (e) => {
 
 resize();
 animate();
+
+// Screenshot gallery
+function selectScreenshot(thumb, src, caption) {
+    document.getElementById('gallery-main').src = src;
+    document.getElementById('gallery-caption').textContent = caption;
+    document.querySelectorAll('.gallery-thumb').forEach(t => t.classList.remove('active'));
+    thumb.classList.add('active');
+}
