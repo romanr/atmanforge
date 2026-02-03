@@ -235,8 +235,23 @@ class AppState {
         commitUndoCheckpoint()
     }
 
-    /// Convert arbitrary image data to PNG for consistent API handling
+    /// Normalize image data for API consumption.
+    /// JPEG and PNG are returned as-is (universally supported by AI APIs).
+    /// Other formats (HEIC, TIFF, etc.) are converted to PNG.
     private static func normalizeImageData(_ data: Data) -> Data? {
+        guard data.count >= 4 else { return nil }
+        let header = [UInt8](data.prefix(4))
+
+        // JPEG: starts with FF D8
+        if header[0] == 0xFF && header[1] == 0xD8 {
+            return data
+        }
+        // PNG: starts with 89 50 4E 47
+        if header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47 {
+            return data
+        }
+
+        // Convert other formats (HEIC, TIFF, WebP, etc.) to PNG
         #if os(macOS)
         guard let image = NSImage(data: data),
               let tiffData = image.tiffRepresentation,

@@ -450,19 +450,30 @@ struct ImageInspectorView: View {
     }
 
     private var checkerboard: some View {
-        SwiftUI.Canvas { context, size in
-            let sq: CGFloat = 8
-            for row in 0..<Int(ceil(size.height / sq)) {
-                for col in 0..<Int(ceil(size.width / sq)) {
-                    let isLight = (row + col).isMultiple(of: 2)
-                    context.fill(
-                        Path(CGRect(x: CGFloat(col) * sq, y: CGFloat(row) * sq, width: sq, height: sq)),
-                        with: .color(isLight ? Color(white: 0.9) : Color(white: 0.75))
-                    )
-                }
-            }
-        }
+        Image(decorative: Self.checkerboardTile, scale: 1.0)
+            .resizable(resizingMode: .tile)
     }
+
+    private static let checkerboardTile: CGImage = {
+        let sq = 8
+        let size = sq * 2
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let ctx = CGContext(
+            data: nil, width: size, height: size,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        // Light squares
+        ctx.setFillColor(CGColor(gray: 0.9, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: sq, height: sq))
+        ctx.fill(CGRect(x: sq, y: sq, width: sq, height: sq))
+        // Dark squares
+        ctx.setFillColor(CGColor(gray: 0.75, alpha: 1))
+        ctx.fill(CGRect(x: sq, y: 0, width: sq, height: sq))
+        ctx.fill(CGRect(x: 0, y: sq, width: sq, height: sq))
+        return ctx.makeImage()!
+    }()
 
     @ViewBuilder
     private func imageContextMenu(imageURL: URL) -> some View {

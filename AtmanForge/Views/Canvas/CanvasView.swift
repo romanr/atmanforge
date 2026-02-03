@@ -1,4 +1,5 @@
 import SwiftUI
+import ImageIO
 #if os(macOS)
 import AppKit
 #endif
@@ -62,24 +63,35 @@ struct CanvasView: View {
             return
         }
 
-        #if os(macOS)
-        if let nsImage = NSImage(contentsOf: canvas.imageURL),
-           let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-            image = cgImage
-            imageSize = CGSize(width: cgImage.width, height: cgImage.height)
-        } else {
+        guard let source = CGImageSourceCreateWithURL(canvas.imageURL as CFURL, nil) else {
             image = nil
+            return
         }
-        #else
-        if let data = try? Data(contentsOf: canvas.imageURL),
-           let uiImage = UIImage(data: data),
-           let cgImage = uiImage.cgImage {
-            image = cgImage
-            imageSize = CGSize(width: cgImage.width, height: cgImage.height)
+
+        // Read original dimensions
+        if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as NSDictionary?,
+           let w = properties[kCGImagePropertyPixelWidth] as? Int,
+           let h = properties[kCGImagePropertyPixelHeight] as? Int {
+            imageSize = CGSize(width: w, height: h)
+        }
+
+        // Downsample large images for display performance
+        let maxDisplayPixels: CGFloat = 2560
+        let maxDim = max(imageSize.width, imageSize.height)
+
+        if maxDim > maxDisplayPixels {
+            let options: [CFString: Any] = [
+                kCGImageSourceThumbnailMaxPixelSize: maxDisplayPixels,
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+            ]
+            image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
         } else {
-            image = nil
+            image = CGImageSourceCreateImageAtIndex(source, 0, [
+                kCGImageSourceShouldCacheImmediately: true,
+            ] as CFDictionary)
         }
-        #endif
     }
 
     private var dragGesture: some Gesture {

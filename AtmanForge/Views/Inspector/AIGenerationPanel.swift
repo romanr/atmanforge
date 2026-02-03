@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
+import ImageIO
 
 struct AIGenerationPanel: View {
     @Environment(AppState.self) private var appState
@@ -85,24 +86,12 @@ struct AIGenerationPanel: View {
                                 .foregroundStyle(.tertiary)
                         }
                     } else {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                        LazyVGrid(columns: Array(repeating: GridItem(.fixed(72), spacing: 8), count: 3), spacing: 8) {
                             ForEach(Array(appState.referenceImages.enumerated()), id: \.offset) { index, imageData in
                                 ZStack(alignment: .topTrailing) {
-                                    #if os(macOS)
-                                    if let nsImage = NSImage(data: imageData) {
-                                        Image(nsImage: nsImage)
-                                            .resizable()
-                                            .aspectRatio(1, contentMode: .fill)
-                                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    }
-                                    #else
-                                    if let uiImage = UIImage(data: imageData) {
-                                        Image(uiImage: uiImage)
-                                            .resizable()
-                                            .aspectRatio(1, contentMode: .fill)
-                                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    }
-                                    #endif
+                                    ReferenceImageThumbnail(imageData: imageData)
+                                        .aspectRatio(1, contentMode: .fit)
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
 
                                     Button {
                                         appState.removeReferenceImage(at: index)
@@ -128,6 +117,7 @@ struct AIGenerationPanel: View {
                         .padding(8)
                     }
                 }
+                .fixedSize(horizontal: false, vertical: true)
                 .onDrop(of: [.image, .fileURL], isTargeted: $isDropTargeted) { providers in
                     handleDrop(providers)
                 }
@@ -169,7 +159,7 @@ struct AIGenerationPanel: View {
                     .foregroundStyle(.secondary)
                 TextEditor(text: $appState.prompt)
                     .font(.body)
-                    .frame(minHeight: 80, maxHeight: 160)
+                    .frame(minHeight: 60, maxHeight: 120)
                     .scrollContentBackground(.hidden)
                     .padding(6)
                     .background(.background.secondary)
@@ -398,5 +388,23 @@ struct AIGenerationPanel: View {
             }
         }
         return true
+    }
+}
+
+/// Displays a downsampled thumbnail of reference image data.
+/// Isolated from AppState so its body is not re-evaluated on every state change (e.g., typing).
+private struct ReferenceImageThumbnail: View {
+    let imageData: Data
+
+    var body: some View {
+        if let source = CGImageSourceCreateWithData(imageData as CFData, nil),
+           let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+               kCGImageSourceThumbnailMaxPixelSize: 256,
+               kCGImageSourceCreateThumbnailFromImageAlways: true,
+               kCGImageSourceCreateThumbnailWithTransform: true,
+           ] as CFDictionary) {
+            Image(decorative: thumbnail, scale: 1.0)
+                .resizable()
+        }
     }
 }

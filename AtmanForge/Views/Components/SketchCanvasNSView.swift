@@ -282,11 +282,26 @@ class SketchDrawingView: NSView {
         return super.performKeyEquivalent(with: event)
     }
 
+    private func cursorInvalidationRect(around point: CGPoint) -> NSRect {
+        let margin: CGFloat = 2
+        return NSRect(
+            x: point.x - brushSize / 2 - margin,
+            y: point.y - brushSize / 2 - margin,
+            width: brushSize + margin * 2,
+            height: brushSize + margin * 2
+        )
+    }
+
     // MARK: - Mouse Events
 
     override func mouseMoved(with event: NSEvent) {
-        cursorPosition = convert(event.locationInWindow, from: nil)
-        needsDisplay = true
+        let newPosition = convert(event.locationInWindow, from: nil)
+        // Invalidate only the old and new cursor regions instead of the entire view
+        if let oldPos = cursorPosition {
+            setNeedsDisplay(cursorInvalidationRect(around: oldPos))
+        }
+        cursorPosition = newPosition
+        setNeedsDisplay(cursorInvalidationRect(around: newPosition))
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -295,8 +310,10 @@ class SketchDrawingView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         NSCursor.unhide()
+        if let oldPos = cursorPosition {
+            setNeedsDisplay(cursorInvalidationRect(around: oldPos))
+        }
         cursorPosition = nil
-        needsDisplay = true
     }
 
     override func mouseDown(with event: NSEvent) {
