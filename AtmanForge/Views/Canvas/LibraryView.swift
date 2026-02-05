@@ -172,6 +172,7 @@ struct LibraryView: View {
         }
         #if os(macOS)
         .background(Color(nsColor: .windowBackgroundColor))
+        .quickLookKeyHandler(appState: appState)
         #else
         .background(Color(uiColor: .systemBackground))
         #endif
@@ -493,7 +494,7 @@ struct LibraryView: View {
         let thumbURL = root.appendingPathComponent(entry.thumbPath)
 
         return HStack(spacing: 0) {
-            listThumbnail(url: thumbURL)
+            listThumbnail(url: thumbURL, savedImageURL: savedImageURL)
                 .padding(.trailing, 10)
 
             Text(entry.fileName)
@@ -565,7 +566,19 @@ struct LibraryView: View {
         }
     }
 
-    private func listThumbnail(url: URL) -> some View {
+    private func updateHoveredPreviewURL(isHovered: Bool, previewURL: URL?) {
+        guard let previewURL else { return }
+        if isHovered {
+            appState.hoveredPreviewURL = previewURL
+            #if os(macOS)
+            QuickLookController.shared.updateIfVisible(url: previewURL)
+            #endif
+        } else if appState.hoveredPreviewURL == previewURL {
+            appState.hoveredPreviewURL = nil
+        }
+    }
+
+    private func listThumbnail(url: URL, savedImageURL: URL?) -> some View {
         Group {
             #if os(macOS)
             if let nsImage = NSImage(contentsOf: url) {
@@ -574,6 +587,9 @@ struct LibraryView: View {
                     .aspectRatio(contentMode: .fill)
                     .frame(width: 48, height: 48)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .onHover { isHovered in
+                        updateHoveredPreviewURL(isHovered: isHovered, previewURL: savedImageURL)
+                    }
             } else {
                 placeholderThumb
             }

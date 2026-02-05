@@ -79,6 +79,7 @@ class GenerationJob: Identifiable {
         self.errorMessage = record.errorMessage
         self.startedAt = record.startedAt
         self.completedAt = record.completedAt
+        self.requestParamsJSON = record.requestParamsJSON
     }
 
     func toRecord() -> ActivityRecord {
@@ -90,7 +91,8 @@ class GenerationJob: Identifiable {
             status: status, savedImagePaths: savedImagePaths,
             thumbnailPaths: thumbnailPaths, referenceImagePaths: referenceImagePaths,
             errorMessage: errorMessage,
-            startedAt: startedAt, completedAt: completedAt
+            startedAt: startedAt, completedAt: completedAt,
+            requestParamsJSON: requestParamsJSON
         )
     }
 
@@ -154,6 +156,7 @@ struct ActivityRecord: Codable {
     let errorMessage: String?
     let startedAt: Date?
     let completedAt: Date?
+    let requestParamsJSON: String?
 
     init(id: UUID, model: AIModel, prompt: String, projectID: String,
          createdAt: Date, aspectRatio: AspectRatio, resolution: ImageResolution?,
@@ -161,7 +164,7 @@ struct ActivityRecord: Codable {
          gptInputFidelity: GPTInputFidelity?, status: GenerationJob.Status,
          savedImagePaths: [String], thumbnailPaths: [String], referenceImagePaths: [String] = [],
          errorMessage: String?,
-         startedAt: Date? = nil, completedAt: Date? = nil) {
+         startedAt: Date? = nil, completedAt: Date? = nil, requestParamsJSON: String? = nil) {
         self.id = id
         self.model = model
         self.prompt = prompt
@@ -180,6 +183,7 @@ struct ActivityRecord: Codable {
         self.errorMessage = errorMessage
         self.startedAt = startedAt
         self.completedAt = completedAt
+        self.requestParamsJSON = requestParamsJSON
     }
 
     init(from decoder: Decoder) throws {
@@ -202,6 +206,7 @@ struct ActivityRecord: Codable {
         errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
         startedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt)
         completedAt = try container.decodeIfPresent(Date.self, forKey: .completedAt)
+        requestParamsJSON = try container.decodeIfPresent(String.self, forKey: .requestParamsJSON)
     }
 }
 

@@ -58,6 +58,7 @@ class AppState {
     var imageVersion = 0
     var errorMessage: String?
     var projectSizeText: String = ""
+    var hoveredPreviewURL: URL?
     var librarySortOrder: LibrarySortOrder = .dateAdded
     var librarySortAscending: Bool = false
     var libraryViewMode: LibraryViewMode = .grid
@@ -643,7 +644,9 @@ class AppState {
             gptBackground: currentModel == .gptImage15 ? currentGptBackground : nil,
             gptInputFidelity: currentModel == .gptImage15 ? currentGptInputFidelity : nil
         )
-        generationJobs.insert(job, at: 0)
+        withAnimation(.easeInOut(duration: 0.2)) {
+            generationJobs.insert(job, at: 0)
+        }
         activeJobID = job.id
 
         // Save reference images to project folder
@@ -669,7 +672,7 @@ class AppState {
             gptQuality: currentModel == .gptImage15 ? currentGptQuality : nil,
             gptBackground: currentModel == .gptImage15 ? currentGptBackground : nil,
             gptInputFidelity: currentModel == .gptImage15 ? currentGptInputFidelity : nil,
-            fluxPromptStrength: currentModel == .flux2Pro ? currentFluxPromptStrength : nil
+            fluxPromptStrength: (currentModel == .flux2Pro || currentModel == .flux2Max) ? currentFluxPromptStrength : nil
         )
 
         let provider = ReplicateProvider(apiKey: apiKey)

@@ -140,13 +140,6 @@ struct AIGenerationPanel: View {
                         }
                     }
 
-                    Button {
-                        appState.referenceImages.removeAll()
-                    } label: {
-                        Label("Erase", systemImage: "eraser")
-                            .font(.subheadline)
-                    }
-                    .disabled(appState.referenceImages.isEmpty)
 
                     Spacer()
 

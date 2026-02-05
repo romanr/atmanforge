@@ -133,8 +133,8 @@ class ReplicateProvider: AIProvider {
             switch request.model {
             case .gptImage15:
                 input["input_images"] = fileURLs
-            case .qwenImage, .qwenImage2512, .flux2Pro:
-                // Qwen and flux2Pro expect a single image parameter named "image".
+            case .qwenImage, .qwenImage2512, .flux2Pro, .flux2Max:
+                // Qwen and flux2 models expect a single image parameter named "image".
                 if let first = fileURLs.first {
                     input["image"] = first
                 }
@@ -168,6 +168,13 @@ class ReplicateProvider: AIProvider {
             input["output_format"] = "png"
 
         case .flux2Pro:
+            input["output_format"] = "png"
+            input["safety_tolerance"] = 5
+            if let strength = request.fluxPromptStrength {
+                input["prompt_strength"] = strength
+            }
+
+        case .flux2Max:
             input["output_format"] = "png"
             input["safety_tolerance"] = 5
             if let strength = request.fluxPromptStrength {
