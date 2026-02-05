@@ -57,13 +57,6 @@ struct AIGenerationPanel: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    if !appState.referenceImages.isEmpty {
-                        Button("Clear") {
-                            appState.referenceImages.removeAll()
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
                 }
 
                 ZStack {
@@ -90,7 +83,9 @@ struct AIGenerationPanel: View {
                             ForEach(Array(appState.referenceImages.enumerated()), id: \.offset) { index, imageData in
                                 ZStack(alignment: .topTrailing) {
                                     ReferenceImageThumbnail(imageData: imageData)
-                                        .aspectRatio(1, contentMode: .fit)
+                                        .aspectRatio(1, contentMode: .fill)
+                                        .frame(width: 72, height: 72)
+                                        .clipped()
                                         .clipShape(RoundedRectangle(cornerRadius: 6))
 
                                     Button {
@@ -145,6 +140,14 @@ struct AIGenerationPanel: View {
                         }
                     }
 
+                    Button {
+                        appState.referenceImages.removeAll()
+                    } label: {
+                        Label("Erase", systemImage: "eraser")
+                            .font(.subheadline)
+                    }
+                    .disabled(appState.referenceImages.isEmpty)
+
                     Spacer()
 
                     Text("\(appState.referenceImages.count)/\(appState.selectedModel.maxReferenceImages) max")
@@ -164,6 +167,29 @@ struct AIGenerationPanel: View {
                     .padding(6)
                     .background(.background.secondary)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+
+            if appState.selectedModel == .flux2Pro {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Prompt Strength")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        Text(appState.fluxPromptStrength, format: .number.precision(.fractionLength(2)))
+                            .font(.subheadline)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, alignment: .leading)
+                        Image(systemName: "text.bubble")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Slider(value: $appState.fluxPromptStrength, in: 0...1, step: 0.05)
+                            .frame(maxWidth: .infinity)
+                        Image(systemName: "photo")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             HStack {
@@ -348,6 +374,9 @@ struct AIGenerationPanel: View {
         .onChange(of: appState.imageCount) {
             appState.commitUndoCheckpoint()
         }
+        .onChange(of: appState.fluxPromptStrength) {
+            appState.commitUndoCheckpoint()
+        }
         .onChange(of: appState.gptQuality) {
             appState.commitUndoCheckpoint()
         }
@@ -405,6 +434,7 @@ private struct ReferenceImageThumbnail: View {
            ] as CFDictionary) {
             Image(decorative: thumbnail, scale: 1.0)
                 .resizable()
+                .scaledToFill()
         }
     }
 }

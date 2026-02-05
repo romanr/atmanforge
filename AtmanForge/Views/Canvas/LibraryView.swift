@@ -45,6 +45,7 @@ struct LibraryView: View {
     @State private var previewImageURL: URL?
     @State private var previewModelName: String?
     @State private var previewPrompt: String?
+    @State private var previewParamsJSON: String?
 
     private var projectRoot: URL? {
         appState.projectManager.projectsRootURL
@@ -182,7 +183,8 @@ struct LibraryView: View {
                 ImagePreviewView(
                     imageURL: url,
                     modelName: previewModelName,
-                    prompt: previewPrompt
+                    prompt: previewPrompt,
+                    requestParamsJSON: previewParamsJSON
                 ) {
                     previewImageURL = nil
                 }
@@ -441,6 +443,7 @@ struct LibraryView: View {
                     previewImageURL = savedImageURL
                     previewModelName = entry.model.displayName
                     previewPrompt = entry.prompt
+                    previewParamsJSON = entry.job?.requestParamsJSON
                 }
             },
             extraContextMenu: {
@@ -610,6 +613,7 @@ struct LibraryView: View {
                 previewImageURL = fileURL
                 previewModelName = entry.model.displayName
                 previewPrompt = entry.prompt
+                previewParamsJSON = entry.job?.requestParamsJSON
             } label: {
                 Label("Preview", systemImage: "eye")
             }

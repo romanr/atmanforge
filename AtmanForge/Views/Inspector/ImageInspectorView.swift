@@ -102,6 +102,7 @@ struct ImagePreviewView: View {
     let imageURL: URL
     var modelName: String?
     var prompt: String?
+    var requestParamsJSON: String?
     var onClose: () -> Void
 
     var body: some View {
@@ -111,25 +112,40 @@ struct ImagePreviewView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .aspectRatio(1, contentMode: .fit)
             }
             Divider()
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    if let modelName {
-                        Text(modelName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let modelName {
+                            Text(modelName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let prompt, !prompt.isEmpty {
+                            Text(prompt)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
                     }
-                    if let prompt, !prompt.isEmpty {
-                        Text(prompt)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
+                    Spacer()
+                    Button("Close") { onClose() }
+                        .keyboardShortcut(.cancelAction)
                 }
-                Spacer()
-                Button("Close") { onClose() }
-                    .keyboardShortcut(.cancelAction)
+                if let params = requestParamsJSON, !params.isEmpty {
+                    ScrollView(.vertical) {
+                        Text(params)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 140)
+                    .padding(8)
+                    .background(Color.secondary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
             }
             .padding()
             .background(.bar)
@@ -146,6 +162,7 @@ struct ImageInspectorView: View {
     @State private var comparisonActive: Bool = false
     @State private var comparisonViewID: UUID = UUID()
     @State private var previewImageURL: URL?
+    @State private var showRequestDetails: Bool = false
 
     private var job: GenerationJob? {
         appState.selectedImageJob
@@ -174,6 +191,18 @@ struct ImageInspectorView: View {
                     comparisonImageView(job)
                     referenceImageThumbnails(job)
                     metadataSection(job)
+                    if showRequestDetails, let params = job.requestParamsJSON, !params.isEmpty {
+                        ScrollView(.vertical) {
+                            Text(params)
+                                .font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 120)
+                        .padding(8)
+                        .background(Color.secondary.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
                     Spacer()
                     actionButtons(job)
                 }
@@ -203,7 +232,8 @@ struct ImageInspectorView: View {
                     ImagePreviewView(
                         imageURL: url,
                         modelName: job.model.displayName,
-                        prompt: job.prompt
+                        prompt: job.prompt,
+                        requestParamsJSON: job.requestParamsJSON
                     ) {
                         previewImageURL = nil
                     }
@@ -290,8 +320,20 @@ struct ImageInspectorView: View {
 
     private var header: some View {
         HStack {
-            Text("Inspector")
-                .font(.headline)
+            HStack(spacing: 6) {
+                Text("Inspector")
+                    .font(.headline)
+                if let params = appState.selectedImageJob?.requestParamsJSON, !params.isEmpty {
+                    Button {
+                        showRequestDetails.toggle()
+                    } label: {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .help(showRequestDetails ? "Hide request" : "Show request")
+                }
+            }
             Spacer()
             Button {
                 appState.clearImageSelection()
@@ -614,7 +656,16 @@ struct ImageInspectorView: View {
                 Button {
                     appState.loadSettings(from: job)
                 } label: {
-                    Label("Reuse Parameters", systemImage: "arrow.counterclockwise")
+                    Label("Retry", systemImage: "arrow.counterclockwise")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+
+                Button {
+                    appState.loadSettingsCompatible(from: job)
+                } label: {
+                    Label("Reuse Parameters", systemImage: "doc.text.image")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -667,3 +718,4 @@ struct ImageInspectorView: View {
         return formatter.string(from: date)
     }
 }
+
