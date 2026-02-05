@@ -110,7 +110,6 @@ struct ImagePreviewView: View {
             if let nsImage = NSImage(contentsOf: imageURL) {
                 Image(nsImage: nsImage)
                     .resizable()
-                    .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .aspectRatio(1, contentMode: .fit)
             }
