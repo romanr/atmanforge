@@ -22,6 +22,7 @@ class GenerationJob: Identifiable {
     var thumbnailPaths: [String] = []
     var referenceImagePaths: [String] = []
     var errorMessage: String?
+    var requestParamsJSON: String?
 
     // Cancel & timing (transient, not persisted except startedAt/completedAt)
     var cancelURLs: [String] = []
@@ -216,3 +217,4 @@ struct ImageMeta: Codable {
     let referenceHashes: [String]
     let createdAt: Date
 }
+

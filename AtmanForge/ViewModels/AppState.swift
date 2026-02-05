@@ -33,6 +33,7 @@ struct GenerationParamsSnapshot: Equatable {
     let gptQuality: GPTQuality
     let gptBackground: GPTBackground
     let gptInputFidelity: GPTInputFidelity
+    let fluxPromptStrength: Double
 }
 
 @MainActor
@@ -89,6 +90,7 @@ class AppState {
     var gptQuality: GPTQuality = .medium
     var gptBackground: GPTBackground = .auto
     var gptInputFidelity: GPTInputFidelity = .high
+    var fluxPromptStrength: Double = 0.5
 
     // MARK: - Undo/Redo
     var undoStack: [GenerationParamsSnapshot] = []
@@ -145,11 +147,6 @@ class AppState {
             imageCount = selectedModel.maxImageCount
         }
 
-        // Clamp reference images to model max
-        if referenceImages.count > selectedModel.maxReferenceImages {
-            referenceImages = Array(referenceImages.prefix(selectedModel.maxReferenceImages))
-        }
-
         // Reset aspect ratio if not supported by new model
         if !selectedModel.supportedAspectRatios.contains(selectedAspectRatio) {
             selectedAspectRatio = .r1_1
@@ -168,7 +165,8 @@ class AppState {
             referenceImages: referenceImages,
             gptQuality: gptQuality,
             gptBackground: gptBackground,
-            gptInputFidelity: gptInputFidelity
+            gptInputFidelity: gptInputFidelity,
+            fluxPromptStrength: fluxPromptStrength
         )
     }
 
@@ -208,6 +206,7 @@ class AppState {
         gptQuality = snapshot.gptQuality
         gptBackground = snapshot.gptBackground
         gptInputFidelity = snapshot.gptInputFidelity
+        fluxPromptStrength = snapshot.fluxPromptStrength
         lastCommittedSnapshot = snapshot
         isRestoringSnapshot = false
     }
@@ -450,6 +449,62 @@ class AppState {
         commitUndoCheckpoint()
     }
 
+    func loadSettingsCompatible(from job: GenerationJob) {
+        // Keep current model; apply parameters that are compatible
+        let currentModel = selectedModel
+        prompt = job.prompt
+
+        // Aspect ratio: use if supported, else fallback to 1:1
+        if currentModel.supportedAspectRatios.contains(job.aspectRatio) {
+            selectedAspectRatio = job.aspectRatio
+        } else {
+            selectedAspectRatio = .r1_1
+        }
+
+        // Resolution if supported by current model
+        if currentModel.supportsResolution, let res = job.resolution {
+            selectedResolution = res
+        }
+
+        // Image count clamped to current model
+        imageCount = min(job.imageCount, currentModel.maxImageCount)
+
+        // GPT settings only if current model is GPT Image 1.5
+        if currentModel == .gptImage15 {
+            if let q = job.gptQuality { gptQuality = q }
+            if let bg = job.gptBackground { gptBackground = bg }
+            if let f = job.gptInputFidelity { gptInputFidelity = f }
+        }
+
+        // Restore reference images from saved paths, clamped to current model's max
+        if let root = projectManager.projectsRootURL, !job.referenceImagePaths.isEmpty {
+            var restored: [Data] = []
+            for path in job.referenceImagePaths {
+                let url = root.appendingPathComponent(path)
+                if let data = try? Data(contentsOf: url) {
+                    restored.append(data)
+                }
+            }
+            referenceImages.removeAll()
+            addReferenceImages(Array(restored.prefix(currentModel.maxReferenceImages)))
+        }
+
+        // Fallback: if no reference images were restored from the job but the current model supports references,
+        // add the currently selected generated image (if available) as a reference.
+        if referenceImages.isEmpty && currentModel.maxReferenceImages > 0 {
+            if let root = projectManager.projectsRootURL,
+               let selJob = selectedImageJob,
+               selectedImageIndex < selJob.savedImagePaths.count {
+                let imageURL = root.appendingPathComponent(selJob.savedImagePaths[selectedImageIndex])
+                if let data = try? Data(contentsOf: imageURL) {
+                    addReferenceImages([data])
+                }
+            }
+        }
+
+        commitUndoCheckpoint()
+    }
+
     // MARK: - Project Operations
 
     func loadProjects() {
@@ -574,6 +629,7 @@ class AppState {
         let currentGptQuality = gptQuality
         let currentGptBackground = gptBackground
         let currentGptInputFidelity = gptInputFidelity
+        let currentFluxPromptStrength = fluxPromptStrength
 
         // Create job and switch to activity tab immediately
         let job = GenerationJob(
@@ -612,20 +668,22 @@ class AppState {
             referenceImages: currentReferenceImages,
             gptQuality: currentModel == .gptImage15 ? currentGptQuality : nil,
             gptBackground: currentModel == .gptImage15 ? currentGptBackground : nil,
-            gptInputFidelity: currentModel == .gptImage15 ? currentGptInputFidelity : nil
+            gptInputFidelity: currentModel == .gptImage15 ? currentGptInputFidelity : nil,
+            fluxPromptStrength: currentModel == .flux2Pro ? currentFluxPromptStrength : nil
         )
 
         let provider = ReplicateProvider(apiKey: apiKey)
 
         Task {
             do {
-                let result = try await provider.generateImage(request: request, parallelDelay: parallelRequestDelay) { [weak self] cancelURL in
+                let result = try await provider.generateImage(request: request, parallelDelay: parallelRequestDelay) { [weak self] cancelURL, paramsJSON in
                     Task { @MainActor in
                         guard let self else { return }
                         if job.startedAt == nil {
                             job.startedAt = Date()
                         }
                         job.cancelURLs.append(cancelURL)
+                        if let paramsJSON { job.requestParamsJSON = paramsJSON }
                     }
                 }
 
@@ -853,3 +911,4 @@ class AppState {
     var showNewCanvasAlert = false
     var newItemName = ""
 }
+

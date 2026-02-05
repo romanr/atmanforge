@@ -10,6 +10,8 @@ struct ActivityView: View {
     @State private var previewImageURL: URL?
     @State private var previewModelName: String?
     @State private var previewPrompt: String?
+    @State private var previewParamsJSON: String?
+    @State private var expandedJobs: Set<UUID> = []
 
     private var projectRoot: URL? {
         appState.projectManager.projectsRootURL
@@ -37,7 +39,8 @@ struct ActivityView: View {
                 ImagePreviewView(
                     imageURL: url,
                     modelName: previewModelName,
-                    prompt: previewPrompt
+                    prompt: previewPrompt,
+                    requestParamsJSON: previewParamsJSON
                 ) {
                     previewImageURL = nil
                 }
@@ -60,6 +63,31 @@ struct ActivityView: View {
     }
 
     private var jobListView: some View {
+        #if os(macOS)
+        Table(appState.generationJobs) {
+            TableColumn("Activity") { job in
+                jobRow(job)
+                    .onHover { isHovered in
+                        hoveredJobID = isHovered ? job.id : nil
+                    }
+                    .contextMenu {
+                        if let error = job.errorMessage, job.status == .failed {
+                            Button {
+                                copyToClipboard(error)
+                            } label: {
+                                Label("Copy Error", systemImage: "doc.on.doc")
+                            }
+                            Divider()
+                        }
+                        Button(role: .destructive) {
+                            appState.removeJob(job)
+                        } label: {
+                            Label("Remove", systemImage: "trash")
+                        }
+                    }
+            }
+        }
+        #else
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(appState.generationJobs) { job in
@@ -86,6 +114,7 @@ struct ActivityView: View {
                 }
             }
         }
+        #endif
     }
 
     private func jobRow(_ job: GenerationJob) -> some View {
@@ -109,11 +138,30 @@ struct ActivityView: View {
                     Text(job.model.displayName)
                         .font(.subheadline)
                         .fontWeight(.medium)
+                    if let params = job.requestParamsJSON, !params.isEmpty {
+                        Button {
+                            if expandedJobs.contains(job.id) { expandedJobs.remove(job.id) } else { expandedJobs.insert(job.id) }
+                        } label: {
+                            Image(systemName: "doc.text.magnifyingglass")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .help(expandedJobs.contains(job.id) ? "Hide request" : "Show request")
+                    }
                     if (job.status == .completed || job.status == .failed || job.status == .cancelled) && hoveredJobID == job.id {
                         Button {
                             appState.loadSettings(from: job)
                         } label: {
-                            Label("Reuse Parameters", systemImage: "arrow.counterclockwise")
+                            Label("Retry", systemImage: "arrow.counterclockwise")
+                                .font(.caption2)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.accentColor)
+
+                        Button {
+                            appState.loadSettingsCompatible(from: job)
+                        } label: {
+                            Label("Reuse Parameters", systemImage: "doc.text.image")
                                 .font(.caption2)
                         }
                         .buttonStyle(.plain)
@@ -170,6 +218,19 @@ struct ActivityView: View {
                     }
                 }
 
+                if expandedJobs.contains(job.id), let params = job.requestParamsJSON, !params.isEmpty {
+                    ScrollView(.vertical) {
+                        Text(params)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 120)
+                    .padding(8)
+                    .background(Color.secondary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+
                 if job.status == .completed && !job.thumbnailPaths.isEmpty, let root = projectRoot {
                     FlowLayout(spacing: 6) {
                         ForEach(Array(job.thumbnailPaths.enumerated()), id: \.element) { index, thumbPath in
@@ -189,6 +250,7 @@ struct ActivityView: View {
                                         previewImageURL = savedURL
                                         previewModelName = job.model.displayName
                                         previewPrompt = job.prompt
+                                        previewParamsJSON = job.requestParamsJSON
                                     }
                                 }
                             )
